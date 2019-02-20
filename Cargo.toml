@@ -3,6 +3,13 @@ name = "slauth"
 version = "0.1.0"
 authors = ["richer <richer.arc@gmail.com>"]
 edition = "2018"
+description = "oath HOTP and TOTP complient implementation"
+documentation = "https://docs.rs/slauth"
+homepage = "https://github.com/devolutions/slauth"
+repository = "https://github.com/devolutions/slauth"
+readme = "README.md"
+keywords = ["TOTP", "HOTP", "2FA", "MFA"]
+license = "MIT"
 
 [dependencies]
 ring = "0.14.6"
