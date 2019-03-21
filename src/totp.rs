@@ -142,27 +142,21 @@ impl TOTPContext {
 
         let mut counter = ((now_utc().to_timespec().sec as u64 - self.initial_time) / self.period) as u64;
 
-        println!("Counter : {}", counter);
-
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
             d if d < 0 => counter -= d.abs() as u64,
             _ => {},
         }
 
-        println!("adjusted counter: {}", counter);
-
         for i in (counter - self.backward_resync)..(counter + self.forward_resync) {
             if self.gen_at(i).as_str().eq(value) {
                 match i {
                     i if i > counter => {
                         let drift = (i - counter) as i64;
-                        println!("Positive drift {}", drift);
                         self.clock_drift += drift;
                     },
                     i if i < counter => {
                         let drift = (counter - i) as i64;
-                        println!("Negative drift {}", drift);
                         self.clock_drift -= drift;
                     },
                     _ => {},
