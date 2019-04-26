@@ -1,27 +1,74 @@
-use ring::digest::{Algorithm, SHA1, SHA256, SHA512};
+use hmac::{Hmac, Mac};
+use hmac::crypto_mac::{InvalidKeyLength, MacResult};
+use hmac::digest::FixedOutput;
+use sha1::Sha1;
+use sha2::{Sha256, Sha512};
 
-pub enum SlauthAlgoritm {
+#[derive(Clone)]
+pub enum HashesAlgorithm {
     SHA1,
     SHA256,
     SHA512,
 }
 
-impl SlauthAlgoritm {
-    pub fn alg_ref(&self) -> &'static Algorithm {
-        match self {
-            SlauthAlgoritm::SHA1 => &SHA1,
-            SlauthAlgoritm::SHA256 => &SHA256,
-            SlauthAlgoritm::SHA512 => &SHA512,
+pub(crate) struct MacHashKey {
+    secret: Vec<u8>,
+    alg: HashesAlgorithm,
+}
+
+impl MacHashKey {
+    pub(crate) fn sign(&self, data: &[u8]) -> Result<HmacShaResult, InvalidKeyLength> {
+        match self.alg {
+            HashesAlgorithm::SHA1 => {
+                let mut context = Hmac::<Sha1>::new_varkey(&self.secret)?;
+                context.input(data);
+                Ok(HmacShaResult::RSHA1(context.result_reset()))
+            },
+            HashesAlgorithm::SHA256 => {
+                let mut context = Hmac::<Sha256>::new_varkey(&self.secret)?;
+                context.input(data);
+                Ok(HmacShaResult::RSHA256(context.result_reset()))
+            },
+            HashesAlgorithm::SHA512 => {
+                let mut context = Hmac::<Sha512>::new_varkey(&self.secret)?;
+                context.input(data);
+                Ok(HmacShaResult::RSHA512(context.result_reset()))
+            },
         }
     }
 }
 
-impl ToString for SlauthAlgoritm {
+pub(crate) enum HmacShaResult {
+    RSHA1(MacResult<<Sha1 as FixedOutput>::OutputSize>),
+    RSHA256(MacResult<<Sha256 as FixedOutput>::OutputSize>),
+    RSHA512(MacResult<<Sha512 as FixedOutput>::OutputSize>),
+}
+
+impl HmacShaResult {
+    pub(crate) fn into_vec(self) -> Vec<u8> {
+        match self {
+            HmacShaResult::RSHA1(res) => res.code().as_slice().to_vec(),
+            HmacShaResult::RSHA256(res) => res.code().as_slice().to_vec(),
+            HmacShaResult::RSHA512(res) => res.code().as_slice().to_vec(),
+        }
+    }
+}
+
+impl HashesAlgorithm {
+    pub(crate) fn to_mac_hash_key(&self, key: &[u8]) -> MacHashKey {
+        MacHashKey {
+            secret: key.to_vec(),
+            alg: self.clone()
+        }
+    }
+}
+
+impl ToString for HashesAlgorithm {
     fn to_string(&self) -> String {
         match self {
-            SlauthAlgoritm::SHA1 => "SHA1".to_string(),
-            SlauthAlgoritm::SHA256 => "SHA256".to_string(),
-            SlauthAlgoritm::SHA512 => "SHA512".to_string(),
+            HashesAlgorithm::SHA1 => "SHA1".to_string(),
+            HashesAlgorithm::SHA256 => "SHA256".to_string(),
+            HashesAlgorithm::SHA512 => "SHA512".to_string(),
         }
     }
 }

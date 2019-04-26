@@ -9,3 +9,4 @@ pub mod utils;
 pub mod hotp;
 pub mod totp;
 
+pub mod u2f;

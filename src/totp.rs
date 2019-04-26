@@ -1,15 +1,15 @@
-use ring::hmac::{SigningKey, sign};
+use time::now_utc;
+
 use crate::utils::*;
-use time::{now_utc};
 
 pub const TOTP_DEFAULT_PERIOD_VALUE: u64 = 30;
 pub const TOTP_DEFAULT_BACK_RESYNC_VALUE: u64 = 1;
 pub const TOTP_DEFAULT_FORWARD_RESYNC_VALUE: u64 = 1;
 pub const TOTP_DEFAULT_DIGITS_VALUE: usize = 6;
-pub const TOTP_DEFAULT_ALG_VALUE: SlauthAlgoritm = SlauthAlgoritm::SHA1;
+pub const TOTP_DEFAULT_ALG_VALUE: HashesAlgorithm = HashesAlgorithm::SHA1;
 
 pub struct TOTPBuilder {
-    alg: Option<SlauthAlgoritm>,
+    alg: Option<HashesAlgorithm>,
     period: Option<u64>,
     backward_resync: Option<u64>,
     forward_resync: Option<u64>,
@@ -32,7 +32,7 @@ impl TOTPBuilder {
         }
     }
 
-    pub fn algorithm(mut self, alg: SlauthAlgoritm) -> Self {
+    pub fn algorithm(mut self, alg: HashesAlgorithm) -> Self {
         self.alg = Some(alg);
         self
     }
@@ -76,7 +76,7 @@ impl TOTPBuilder {
 
         let alg = alg.unwrap_or_else(|| TOTP_DEFAULT_ALG_VALUE);
         let secret = secret.unwrap_or_else(|| vec![]);
-        let secret_key = SigningKey::new(alg.alg_ref(), secret.as_slice());
+        let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         TOTPContext {
             alg,
@@ -93,7 +93,7 @@ impl TOTPBuilder {
 }
 
 pub struct TOTPContext {
-    alg: SlauthAlgoritm,
+    alg: HashesAlgorithm,
     period: u64,
     backward_resync: u64,
     forward_resync: u64,
@@ -101,7 +101,7 @@ pub struct TOTPContext {
     clock_drift: i64,
     digits: usize,
     secret: Vec<u8>,
-    secret_key: SigningKey,
+    secret_key: MacHashKey,
 }
 
 impl TOTPContext {
@@ -171,8 +171,7 @@ impl TOTPContext {
     fn gen_at(&self, t: u64) -> String {
         let c_b_e = t.to_be_bytes();
 
-        let hs_sig = sign(&self.secret_key, &c_b_e[..]);
-
+        let hs_sig = self.secret_key.sign(&c_b_e[..]).expect("This should not happen since HMAC can take key of any size").into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
         let s_num = s_bits % (10 as u32).pow(self.digits as u32);
@@ -228,9 +227,9 @@ impl OtpAuth for TOTPContext {
                             }
                             Some("algorithm") => {
                                 alg = match s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing algorithm value".to_string() })? {
-                                    "SHA256" => SlauthAlgoritm::SHA256,
-                                    "SHA512" => SlauthAlgoritm::SHA512,
-                                    _ => SlauthAlgoritm::SHA1,
+                                    "SHA256" => HashesAlgorithm::SHA256,
+                                    "SHA512" => HashesAlgorithm::SHA512,
+                                    _ => HashesAlgorithm::SHA1,
                                 };
                                 continue
                             }
@@ -250,7 +249,7 @@ impl OtpAuth for TOTPContext {
                         return Err("Otpauth uri is malformed".to_string());
                     }
 
-                    let secret_key = SigningKey::new(alg.alg_ref(), secret.as_slice());
+                    let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
                     Ok(TOTPContext {
                         alg,
@@ -276,7 +275,7 @@ fn test_multiple() {
 
     let mut server = TOTPContext::builder().period(5).secret(MK_ULTRA.as_bytes()).build();
 
-    let mut client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
+    let client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
 
     for _ in 0..10 {
         use std::thread::sleep;
@@ -292,7 +291,7 @@ fn test_clock_drifting() {
 
     let mut server = TOTPContext::builder().period(5).secret(MK_ULTRA.as_bytes()).re_sync_parameter(3, 3).build();
 
-    let mut client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
+    let client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
 
     for _ in 0..10 {
         let client_code = client.gen();

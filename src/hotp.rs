@@ -1,13 +1,12 @@
-use ring::hmac::{SigningKey, sign};
 use crate::utils::*;
 
 pub const HOTP_DEFAULT_COUNTER_VALUE: u64 = 0;
 pub const HOTP_DEFAULT_RESYNC_VALUE: u16 = 2;
 pub const HOTP_DEFAULT_DIGITS_VALUE: usize = 6;
-pub const HOTP_DEFAULT_ALG_VALUE: SlauthAlgoritm = SlauthAlgoritm::SHA1;
+pub const HOTP_DEFAULT_ALG_VALUE: HashesAlgorithm = HashesAlgorithm::SHA1;
 
 pub struct HOTPBuilder {
-    alg: Option<SlauthAlgoritm>,
+    alg: Option<HashesAlgorithm>,
     counter: Option<u64>,
     resync: Option<u16>,
     digits: Option<usize>,
@@ -25,7 +24,7 @@ impl HOTPBuilder {
         }
     }
 
-    pub fn algorithm(mut self, alg: SlauthAlgoritm) -> Self {
+    pub fn algorithm(mut self, alg: HashesAlgorithm) -> Self {
         self.alg = Some(alg);
         self
     }
@@ -61,7 +60,7 @@ impl HOTPBuilder {
 
         let alg = alg.unwrap_or_else(|| HOTP_DEFAULT_ALG_VALUE);
         let secret = secret.unwrap_or_else(|| vec![]);
-        let secret_key = SigningKey::new(alg.alg_ref(), secret.as_slice());
+        let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         HOTPContext {
             alg,
@@ -75,12 +74,12 @@ impl HOTPBuilder {
 }
 
 pub struct HOTPContext {
-    alg: SlauthAlgoritm,
+    alg: HashesAlgorithm,
     counter: u64,
     resync: u16,
     digits: usize,
     secret: Vec<u8>,
-    secret_key: SigningKey,
+    secret_key: MacHashKey,
 }
 
 impl HOTPContext {
@@ -130,8 +129,7 @@ impl HOTPContext {
     fn gen_at(&self, c: u64) -> String {
         let c_b_e = c.to_be_bytes();
 
-        let hs_sig = sign(&self.secret_key, &c_b_e[..]);
-
+        let hs_sig = self.secret_key.sign(&c_b_e[..]).expect("This should not happen since HMAC can take key of any size").into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
         let s_num = s_bits % (10 as u32).pow(self.digits as u32);
@@ -187,9 +185,9 @@ impl OtpAuth for HOTPContext {
                             }
                             Some("algorithm") => {
                                 alg = match s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing algorithm value".to_string() })? {
-                                    "SHA256" => SlauthAlgoritm::SHA256,
-                                    "SHA512" => SlauthAlgoritm::SHA512,
-                                    _ => SlauthAlgoritm::SHA1,
+                                    "SHA256" => HashesAlgorithm::SHA256,
+                                    "SHA512" => HashesAlgorithm::SHA512,
+                                    _ => HashesAlgorithm::SHA1,
                                 };
                                 continue
                             }
@@ -209,7 +207,7 @@ impl OtpAuth for HOTPContext {
                         return Err("Otpauth uri is malformed".to_string());
                     }
 
-                    let secret_key = SigningKey::new(alg.alg_ref(), secret.as_slice());
+                    let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
                     Ok(HOTPContext {
                         alg,
