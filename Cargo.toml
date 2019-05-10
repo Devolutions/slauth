@@ -11,6 +11,17 @@ readme = "README.md"
 keywords = ["TOTP", "HOTP", "2FA", "MFA"]
 license = "MIT"
 
+[target.'cfg(target_os="android")'.dependencies]
+jni = { version = "0.12", default-features = false }
+
+[lib]
+name = "slauth"
+crate-type = ["staticlib", "cdylib"]
+
+[features]
+default = ['native-bindings']
+native-bindings = []
+
 [dependencies]
 sha2 = "0.8.0"
 hmac = "0.7.0"

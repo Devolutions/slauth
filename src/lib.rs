@@ -5,8 +5,5 @@
 //! Auth utils for MFA algorithms
 
 /// Module for hotp algorithms
-pub mod utils;
-pub mod hotp;
-pub mod totp;
-
+pub mod oath;
 pub mod u2f;

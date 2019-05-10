@@ -1,9 +1,8 @@
-use crate::utils::*;
+use crate::oath::utils::*;
+use crate::oath::{OTP_DEFAULT_ALG_VALUE, OTP_DEFAULT_DIGITS_VALUE};
 
 pub const HOTP_DEFAULT_COUNTER_VALUE: u64 = 0;
 pub const HOTP_DEFAULT_RESYNC_VALUE: u16 = 2;
-pub const HOTP_DEFAULT_DIGITS_VALUE: usize = 6;
-pub const HOTP_DEFAULT_ALG_VALUE: HashesAlgorithm = HashesAlgorithm::SHA1;
 
 pub struct HOTPBuilder {
     alg: Option<HashesAlgorithm>,
@@ -20,7 +19,7 @@ impl HOTPBuilder {
             counter: None,
             resync: None,
             digits: None,
-            secret: None
+            secret: None,
         }
     }
 
@@ -58,7 +57,7 @@ impl HOTPBuilder {
             secret
         } = self;
 
-        let alg = alg.unwrap_or_else(|| HOTP_DEFAULT_ALG_VALUE);
+        let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
         let secret = secret.unwrap_or_else(|| vec![]);
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
@@ -66,9 +65,9 @@ impl HOTPBuilder {
             alg,
             counter: counter.unwrap_or_else(|| HOTP_DEFAULT_COUNTER_VALUE),
             resync: resync.unwrap_or_else(|| HOTP_DEFAULT_RESYNC_VALUE),
-            digits: digits.unwrap_or_else(|| HOTP_DEFAULT_DIGITS_VALUE),
+            digits: digits.unwrap_or_else(|| OTP_DEFAULT_DIGITS_VALUE),
             secret,
-            secret_key
+            secret_key,
         }
     }
 }
@@ -91,7 +90,6 @@ impl HOTPContext {
     /// Generate the current HOTP code corresponding to the counter value
     pub fn gen(&self) -> String {
         self.gen_at(self.counter)
-
     }
 
     /// Increment the inner counter value
@@ -172,16 +170,18 @@ impl OtpAuth for HOTPContext {
                 .and_then(|param_it| {
                     let mut secret = Vec::<u8>::new();
                     let mut counter = std::u64::MAX;
-                    let mut alg = HOTP_DEFAULT_ALG_VALUE;
-                    let mut digits = HOTP_DEFAULT_DIGITS_VALUE;
+                    let mut alg = OTP_DEFAULT_ALG_VALUE;
+                    let mut digits = OTP_DEFAULT_DIGITS_VALUE;
 
                     for s_param in param_it {
                         let mut s_param_it = s_param.split('=');
 
                         match s_param_it.next() {
                             Some("secret") => {
-                                secret = s_param_it.next().and_then(|s| base32::decode(base32::Alphabet::RFC4648 {padding: false}, s)).ok_or_else(|| { "Otpauth uri is malformed, missing secret value".to_string() })?;
-                                continue
+                                secret = s_param_it.next().and_then(|s| {
+                                    dbg!(base32::decode(base32::Alphabet::RFC4648 { padding: false }, s))
+                                }).ok_or_else(|| { "Otpauth uri is malformed, missing secret value".to_string() })?;
+                                continue;
                             }
                             Some("algorithm") => {
                                 alg = match s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing algorithm value".to_string() })? {
@@ -189,15 +189,15 @@ impl OtpAuth for HOTPContext {
                                     "SHA512" => HashesAlgorithm::SHA512,
                                     _ => HashesAlgorithm::SHA1,
                                 };
-                                continue
+                                continue;
                             }
                             Some("digits") => {
                                 digits = s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing digits value".to_string() })?.parse::<usize>().map_err(|_| "Otpauth uri is malformed, bad digits value".to_string())?;
-                                continue
+                                continue;
                             }
                             Some("counter") => {
                                 counter = s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing counter value".to_string() })?.parse::<u64>().map_err(|_| "Otpauth uri is malformed, bad counter value".to_string())?;
-                                continue
+                                continue;
                             }
                             _ => {}
                         }
@@ -215,12 +215,67 @@ impl OtpAuth for HOTPContext {
                         resync: HOTP_DEFAULT_RESYNC_VALUE,
                         digits,
                         secret,
-                        secret_key
+                        secret_key,
                     })
                 })
         } else {
             Err("Otpauth uri is malformed, missing parts".to_string())
         }
+    }
+}
+
+#[cfg(feature = "native-bindings")]
+mod native_bindings {
+    use std::os::raw::c_char;
+    use std::ptr::null_mut;
+
+    use super::*;
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_from_uri(uri: *const c_char) -> *mut HOTPContext {
+        let uri_str = strings::c_char_to_string(uri);
+        Box::into_raw(HOTPContext::from_uri(&uri_str).map(|h| Box::new(h)).unwrap_or_else(|_| Box::from_raw(null_mut())))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_free(hotp: *mut HOTPContext) {
+        let _ = Box::from_raw(hotp);
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_to_uri(hotp: *mut HOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
+        let hotp = &*hotp;
+        let label = strings::c_char_to_string(label);
+        let label_opt = if label.len() > 0 {Some(label.as_str())} else {None};
+        let issuer = strings::c_char_to_string(issuer);
+        let issuer_opt = if issuer.len() > 0 {Some(issuer.as_str())} else {None};
+        strings::string_to_c_char(hotp.to_uri(label_opt, issuer_opt))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_gen(hotp: *mut HOTPContext) -> *mut c_char {
+        let hotp = &*hotp;
+        strings::string_to_c_char(hotp.gen())
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_inc(hotp: *mut HOTPContext) {
+        let hotp = &mut *hotp;
+        hotp.inc();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_verify(hotp: *mut HOTPContext, code: *const c_char) -> bool {
+        let hotp = &mut *hotp;
+        let value = strings::c_char_to_string(code);
+        hotp.verify(&value)
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn hotp_validate_current(hotp: *mut HOTPContext, code: *const c_char) -> bool {
+        let hotp = &*hotp;
+        let value = strings::c_char_to_string(code);
+        hotp.validate_current(&value)
     }
 }
 

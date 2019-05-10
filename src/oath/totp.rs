@@ -1,12 +1,11 @@
 use time::now_utc;
 
-use crate::utils::*;
+use crate::oath::utils::*;
+use crate::oath::{OTP_DEFAULT_DIGITS_VALUE, OTP_DEFAULT_ALG_VALUE};
 
 pub const TOTP_DEFAULT_PERIOD_VALUE: u64 = 30;
 pub const TOTP_DEFAULT_BACK_RESYNC_VALUE: u64 = 1;
 pub const TOTP_DEFAULT_FORWARD_RESYNC_VALUE: u64 = 1;
-pub const TOTP_DEFAULT_DIGITS_VALUE: usize = 6;
-pub const TOTP_DEFAULT_ALG_VALUE: HashesAlgorithm = HashesAlgorithm::SHA1;
 
 pub struct TOTPBuilder {
     alg: Option<HashesAlgorithm>,
@@ -74,7 +73,7 @@ impl TOTPBuilder {
             initial_time
         } = self;
 
-        let alg = alg.unwrap_or_else(|| TOTP_DEFAULT_ALG_VALUE);
+        let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
         let secret = secret.unwrap_or_else(|| vec![]);
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
@@ -83,7 +82,7 @@ impl TOTPBuilder {
             period: period.unwrap_or_else(|| TOTP_DEFAULT_PERIOD_VALUE),
             backward_resync: backward_resync.unwrap_or_else(|| TOTP_DEFAULT_BACK_RESYNC_VALUE),
             forward_resync: forward_resync.unwrap_or_else(|| TOTP_DEFAULT_FORWARD_RESYNC_VALUE),
-            digits: digits.unwrap_or_else(|| TOTP_DEFAULT_DIGITS_VALUE),
+            digits: digits.unwrap_or_else(|| OTP_DEFAULT_DIGITS_VALUE),
             secret,
             secret_key,
             initial_time: initial_time.unwrap_or_else(|| 0),
@@ -213,9 +212,9 @@ impl OtpAuth for TOTPContext {
             param_it_opt.ok_or_else(|| { "Otpauth uri is malformed, missing parameters".to_string() })
                 .and_then(|param_it| {
                     let mut secret = Vec::<u8>::new();
-                    let mut period = 30;
-                    let mut alg = TOTP_DEFAULT_ALG_VALUE;
-                    let mut digits = 6;
+                    let mut period = TOTP_DEFAULT_PERIOD_VALUE;
+                    let mut alg = OTP_DEFAULT_ALG_VALUE;
+                    let mut digits = OTP_DEFAULT_DIGITS_VALUE;
 
                     for s_param in param_it {
                         let mut s_param_it = s_param.split('=');
@@ -266,6 +265,55 @@ impl OtpAuth for TOTPContext {
         } else {
             Err("Otpauth uri is malformed, missing parts".to_string())
         }
+    }
+}
+
+#[cfg(feature = "native-bindings")]
+mod native_bindings {
+    use std::os::raw::c_char;
+    use std::ptr::null_mut;
+
+    use super::*;
+
+    #[no_mangle]
+    pub unsafe extern fn totp_from_uri(uri: *const c_char) -> *mut TOTPContext {
+        let uri_str = strings::c_char_to_string(uri);
+        Box::into_raw(TOTPContext::from_uri(&uri_str).map(|h| Box::new(h)).unwrap_or_else(|_| Box::from_raw(null_mut())))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_free(totp: *mut TOTPContext) {
+        let _ = Box::from_raw(totp);
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_to_uri(totp: *mut TOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
+        let totp = &*totp;
+        let label = strings::c_char_to_string(label);
+        let label_opt = if label.len() > 0 {Some(label.as_str())} else {None};
+        let issuer = strings::c_char_to_string(issuer);
+        let issuer_opt = if issuer.len() > 0 {Some(issuer.as_str())} else {None};
+        strings::string_to_c_char(totp.to_uri(label_opt, issuer_opt))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_gen(totp: *mut TOTPContext) -> *mut c_char {
+        let totp = &*totp;
+        strings::string_to_c_char(totp.gen())
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_verify(totp: *mut TOTPContext, code: *const c_char) -> bool {
+        let totp = &mut *totp;
+        let value = strings::c_char_to_string(code);
+        totp.verify(&value)
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_validate_current(totp: *mut TOTPContext, code: *const c_char) -> bool {
+        let totp = &*totp;
+        let value = strings::c_char_to_string(code);
+        totp.validate_current(&value)
     }
 }
 

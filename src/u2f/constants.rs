@@ -23,3 +23,5 @@ pub const REGISTER_RESPONSE_RESERVED: u8 = 0x05;
 
 pub const REGISTER_REQUEST_DATA_LEN: usize = 64;
 pub const AUTHENTICATE_REQUEST_DATA_FIXED_LEN: usize = 34;
+pub const MAX_RESPONSE_LEN_SHORT: usize = 256;
+pub const MAX_RESPONSE_LEN_EXTENDED: usize = 65536;
