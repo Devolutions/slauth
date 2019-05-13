@@ -4,7 +4,7 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::u2f::constants::*;
 use crate::u2f::error::Error;
-use crate::u2f::message::apdu::{ApduFrame, Request, Response};
+use crate::u2f::raw_message::apdu::{ApduFrame, Request, Response};
 
 pub struct RegisterRequest {
     challenge: [u8; 32],
@@ -15,6 +15,7 @@ pub struct RegisterResponse {
     reserved: u8,
     user_public_key: [u8; 65],
     key_handle_lenght: u8,
+    key_handle: String,
     attestation_cert: Vec<u8>,
     signature: Vec<u8>,
 }
@@ -116,8 +117,14 @@ impl Message for RegisterResponse {
 
             let key_handle_lenght = cursor.read_u8()?;
 
-            let mut attestation_cert = vec![0u8; key_handle_lenght as usize];
-            cursor.read_exact(&mut attestation_cert[..])?;
+            let mut key_handle_bytes = vec![0u8; key_handle_lenght as usize];
+
+            cursor.read_exact(&mut key_handle_bytes[..])?;
+
+            let key_handle = String::from_utf8(key_handle_bytes).map_err(|e| Error::UnexpectedApdu(format!("Got error while parsing key_handle string: {:?}", e)))?;
+
+            let mut attestation_cert = Vec::new();
+            // TODO: Read X.509 DER cert in the remaining data
 
             let mut signature = vec![0u8; data_len - cursor.position() as usize];
             cursor.read_exact(&mut signature[..])?;
@@ -126,6 +133,7 @@ impl Message for RegisterResponse {
                 reserved,
                 user_public_key,
                 key_handle_lenght,
+                key_handle,
                 attestation_cert,
                 signature,
             })
@@ -137,6 +145,7 @@ impl Message for RegisterResponse {
             reserved,
             user_public_key,
             key_handle_lenght,
+            key_handle,
             attestation_cert,
             signature,
         } = self;
@@ -146,6 +155,7 @@ impl Message for RegisterResponse {
         data.write_u8(reserved)?;
         data.write_all(&user_public_key)?;
         data.write_u8(key_handle_lenght)?;
+        data.write_all(&key_handle.as_bytes())?;
         data.write_all(&attestation_cert)?;
         data.write_all(&signature)?;
 
