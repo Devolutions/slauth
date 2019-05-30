@@ -109,9 +109,17 @@ impl TOTPContext {
         TOTPBuilder::new()
     }
 
-    /// Generate the current HOTP code corresponding to the counter value
+    /// Generate the current TOTP code corresponding to the counter value
     pub fn gen(&self) -> String {
-        let mut counter = ((now_utc().to_timespec().sec as u64 - self.initial_time) / self.period) as u64;
+        self.gen_with(0)
+
+    }
+
+    /// Generate the current TOTP code corresponding to the counter value
+    /// Note that elapsed represent the time between the actual time you want in to be generated for and now.
+    /// E.g. if you want a code valid exactly 68 sec ago, elapsed value would be 68
+    pub fn gen_with(&self, elapsed: u64) -> String {
+        let mut counter = ((now_utc().to_timespec().sec as u64 - elapsed - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
@@ -120,7 +128,6 @@ impl TOTPContext {
         }
 
         self.gen_at(counter)
-
     }
 
     /// Check if a code equal the current value at the counter
@@ -270,7 +277,7 @@ impl OtpAuth for TOTPContext {
 
 #[cfg(feature = "native-bindings")]
 mod native_bindings {
-    use std::os::raw::c_char;
+    use std::os::raw::{c_char, c_ulong};
     use std::ptr::null_mut;
 
     use super::*;
@@ -300,6 +307,12 @@ mod native_bindings {
     pub unsafe extern fn totp_gen(totp: *mut TOTPContext) -> *mut c_char {
         let totp = &*totp;
         strings::string_to_c_char(totp.gen())
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
+        let totp = &*totp;
+        strings::string_to_c_char(totp.gen_with(elapsed as u64))
     }
 
     #[no_mangle]
@@ -349,4 +362,17 @@ fn test_clock_drifting() {
         dbg!(&server.clock_drift);
         assert!(server.verify(&client_code));
     }
+}
+
+#[test]
+fn test_gen_with() {
+    let totp = TOTPContext::from_uri("otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example").unwrap();
+
+    let code1 = totp.gen();
+
+    std::thread::sleep(std::time::Duration::from_secs(31));
+
+    let code2 = totp.gen_with(31);
+
+    assert_eq!(code1, code2);
 }

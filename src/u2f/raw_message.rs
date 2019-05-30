@@ -1,6 +1,8 @@
 use std::io::{Cursor, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use untrusted::Input;
+use webpki::EndEntityCert;
 
 use crate::u2f::constants::*;
 use crate::u2f::error::Error;
@@ -50,7 +52,7 @@ impl Message for RegisterRequest {
     type Apdu = Request;
 
     fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
-        if apdu.command_mode != REGISTER_COMMAND_CODE {
+        if apdu.command_mode != U2F_REGISTER {
             return Err(Error::UnexpectedApdu(format!("Expecting Register Command Mode, got {}", apdu.command_mode)));
         }
 
@@ -89,7 +91,7 @@ impl Message for RegisterRequest {
 
         Ok(Request {
             class_byte: 0,
-            command_mode: REGISTER_COMMAND_CODE,
+            command_mode: U2F_REGISTER,
             param_1: 0,
             param_2: 0,
             data_len: Some(64),
@@ -103,7 +105,7 @@ impl Message for RegisterResponse {
     type Apdu = Response;
 
     fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
-        if apdu.status != SW_NO_ERROR {
+        if apdu.status != U2F_SW_NO_ERROR {
             return Err(apdu.status.into());
         }
 
@@ -123,11 +125,16 @@ impl Message for RegisterResponse {
 
             let key_handle = String::from_utf8(key_handle_bytes).map_err(|e| Error::UnexpectedApdu(format!("Got error while parsing key_handle string: {:?}", e)))?;
 
-            let mut attestation_cert = Vec::new();
-            // TODO: Read X.509 DER cert in the remaining data
+            let mut attestation_cert = vec![0u8; data_len - cursor.position() as usize];
+            cursor.read_exact(&mut attestation_cert[..])?;
 
-            let mut signature = vec![0u8; data_len - cursor.position() as usize];
-            cursor.read_exact(&mut signature[..])?;
+            let cert_len = attestation_cert_length(&attestation_cert[0..ASN1_MAX_FOLLOWING_LEN_BYTES + 2])?;
+
+            if cert_len > U2F_MAX_ATT_CERT_SIZE {
+                return Err(Error::MalformedApdu);
+            }
+
+            let signature = attestation_cert.split_off(cert_len);
 
             Ok(RegisterResponse {
                 reserved,
@@ -161,7 +168,7 @@ impl Message for RegisterResponse {
 
         Ok(Response {
             data: Some(data),
-            status: SW_NO_ERROR,
+            status: U2F_SW_NO_ERROR,
         })
     }
 }
@@ -170,15 +177,15 @@ impl Message for AuthenticateRequest {
     type Apdu = Request;
 
     fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
-        if apdu.command_mode != AUTHENTICATE_COMMAND_CODE {
+        if apdu.command_mode != U2F_AUTHENTICATE {
             return Err(Error::UnexpectedApdu(format!("Expecting Version Command Mode, got {}", apdu.command_mode)));
         }
 
         let control = apdu.param_1;
 
         match control {
-            AUTHENTICATE_CHECK_ONLY | AUTHENTICATE_ENFORCE_PRESENCE | AUTHENTICATE_DONT_ENFORCE_PRESENCE => {}
-            _ => {return Err(Error::MalformedApdu);}
+            U2F_AUTH_CHECK_ONLY | U2F_AUTH_ENFORCE | U2F_AUTH_DONT_ENFORCE => {}
+            _ => { return Err(Error::MalformedApdu); }
         }
 
 
@@ -200,7 +207,7 @@ impl Message for AuthenticateRequest {
                 challenge,
                 application,
                 key_h_len,
-                key_handle
+                key_handle,
             })
         })
     }
@@ -226,12 +233,12 @@ impl Message for AuthenticateRequest {
 
         Ok(Request {
             class_byte: 0,
-            command_mode: AUTHENTICATE_COMMAND_CODE,
+            command_mode: U2F_AUTHENTICATE,
             param_1: control,
             param_2: 0,
             data_len: Some(data_len),
             data: Some(data),
-            max_rsp_len: Some(MAX_RESPONSE_LEN_EXTENDED)
+            max_rsp_len: Some(MAX_RESPONSE_LEN_EXTENDED),
         })
     }
 }
@@ -240,7 +247,7 @@ impl Message for AuthenticateResponse {
     type Apdu = Response;
 
     fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
-        if apdu.status != SW_NO_ERROR {
+        if apdu.status != U2F_SW_NO_ERROR {
             return Err(apdu.status.into());
         }
 
@@ -279,7 +286,7 @@ impl Message for AuthenticateResponse {
 
         Ok(Response {
             data: Some(data),
-            status: SW_NO_ERROR
+            status: U2F_SW_NO_ERROR,
         })
     }
 }
@@ -288,7 +295,7 @@ impl Message for VersionRequest {
     type Apdu = Request;
 
     fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
-        if apdu.command_mode != VERSION_COMMAND_CODE {
+        if apdu.command_mode != U2F_VERSION {
             return Err(Error::UnexpectedApdu(format!("Expecting Version Command Mode, got {}", apdu.command_mode)));
         }
 
@@ -298,7 +305,7 @@ impl Message for VersionRequest {
     fn into_apdu(self) -> Result<Self::Apdu, Error> {
         Ok(Request {
             class_byte: 0,
-            command_mode: VERSION_COMMAND_CODE,
+            command_mode: U2F_VERSION,
             param_1: 0,
             param_2: 0,
             data_len: None,
@@ -312,7 +319,7 @@ impl Message for VersionResponse {
     type Apdu = Response;
 
     fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
-        if apdu.status != SW_NO_ERROR {
+        if apdu.status != U2F_SW_NO_ERROR {
             return Err(apdu.status.into());
         }
 
@@ -326,7 +333,7 @@ impl Message for VersionResponse {
     fn into_apdu(self) -> Result<Self::Apdu, Error> {
         Ok(Response {
             data: Some(self.version.as_bytes().to_vec()),
-            status: SW_NO_ERROR
+            status: U2F_SW_NO_ERROR,
         })
     }
 }
@@ -606,4 +613,35 @@ pub trait MessageFrame {
             Self: Sized;
     fn write_to<W: Write>(self, writer: &mut W) -> Result<(), Error>;
     fn get_size(&self) -> usize;
+}
+
+/// Check bytes to find len of the cert according to the ASN1 DER len encoding.
+/// http://en.wikipedia.org/wiki/X.690
+pub fn attestation_cert_length(asn1: &[u8]) -> Result<usize, Error> {
+    if asn1.len() < 2 {
+        return Err(Error::AsnFormatError("Invalid data len".to_string()));
+    }
+
+    if asn1[0] != ASN1_SEQ_TYPE {
+        return Err(Error::AsnFormatError("Invalid type".to_string()));
+    }
+
+    let len = asn1[1];
+    if len & ASN1_DEFINITE_SHORT_MASK == 0 { // check if len is definite short (len <= 127)
+        return Ok(len as usize);
+    }
+
+    let following_bytes = len & ASN1_DEFINITE_LONG_FOLLOWING_MASK; // get following len bytes
+    if following_bytes == 0 {
+        return Err(Error::AsnFormatError("Invalid ans len, expected definite long".to_string()));
+    }
+
+    let mut len: usize = 0;
+    for i in 0..following_bytes {
+        len = len * 256 + (asn1[(2 + i) as usize] as usize);
+    }
+
+    len = len + (following_bytes as usize);
+
+    Ok(len + 2) // Add type + len bytes
 }

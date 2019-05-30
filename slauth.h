@@ -79,6 +79,8 @@ TOTPContext *totp_from_uri(const char *uri);
 
 char *totp_gen(TOTPContext *totp);
 
+char *totp_gen_with(TOTPContext *totp, unsigned long elapsed);
+
 char *totp_to_uri(TOTPContext *totp, const char *label, const char *issuer);
 
 bool totp_validate_current(TOTPContext *totp, const char *code);

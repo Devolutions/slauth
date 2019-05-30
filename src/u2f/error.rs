@@ -4,6 +4,7 @@ pub enum Error {
     IoError(IoError),
     ApduError(u16),
     UnexpectedApdu(String),
+    AsnFormatError(String),
     MalformedApdu,
 }
 

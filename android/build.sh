@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cbindgen src/ -l c > slauth.h
+cbindgen src/lib.rs -l c > slauth.h
 
 cargo build --target aarch64-linux-android --release
 cargo build --target armv7-linux-androideabi --release
