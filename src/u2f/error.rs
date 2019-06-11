@@ -1,11 +1,14 @@
 use std::io::Error as IoError;
+use ring::error::{KeyRejected, Unspecified};
 
 pub enum Error {
     IoError(IoError),
-    ApduError(u16),
+    U2FErrorCode(u16),
     UnexpectedApdu(String),
     AsnFormatError(String),
     MalformedApdu,
+    RingKeyRejected(KeyRejected),
+    Other(String),
 }
 
 impl From<IoError> for Error {
@@ -16,7 +19,19 @@ impl From<IoError> for Error {
 
 impl From<u16> for Error {
     fn from(sw: u16) -> Self {
-        Error::ApduError(sw)
+        Error::U2FErrorCode(sw)
+    }
+}
+
+impl From<Unspecified> for Error {
+    fn from(_: Unspecified) -> Self {
+        Error::Other("Unspecified".to_string())
+    }
+}
+
+impl From<KeyRejected> for Error {
+    fn from(e: KeyRejected) -> Self {
+        Error::RingKeyRejected(e)
     }
 }
 

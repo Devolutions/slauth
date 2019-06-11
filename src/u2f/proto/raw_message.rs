@@ -1,45 +1,43 @@
 use std::io::{Cursor, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use untrusted::Input;
-use webpki::EndEntityCert;
 
-use crate::u2f::constants::*;
 use crate::u2f::error::Error;
-use crate::u2f::raw_message::apdu::{ApduFrame, Request, Response};
+use crate::u2f::proto::constants::*;
+use crate::u2f::proto::raw_message::apdu::{ApduFrame, Request, Response};
 
 pub struct RegisterRequest {
-    challenge: [u8; 32],
-    application: [u8; 32],
+    pub challenge: [u8; U2F_CHAL_SIZE],
+    pub application: [u8; U2F_APPID_SIZE],
 }
 
 pub struct RegisterResponse {
-    reserved: u8,
-    user_public_key: [u8; 65],
-    key_handle_lenght: u8,
-    key_handle: String,
-    attestation_cert: Vec<u8>,
-    signature: Vec<u8>,
+    pub reserved: u8,
+    pub user_public_key: [u8; U2F_EC_POINT_SIZE],
+    pub key_handle_lenght: u8,
+    pub key_handle: String,
+    pub attestation_cert: Vec<u8>,
+    pub signature: Vec<u8>,
 }
 
 pub struct AuthenticateRequest {
-    control: u8,
-    challenge: [u8; 32],
-    application: [u8; 32],
-    key_h_len: u8,
-    key_handle: Vec<u8>,
+    pub control: u8,
+    pub challenge: [u8; U2F_CHAL_SIZE],
+    pub application: [u8; U2F_CHAL_SIZE],
+    pub key_h_len: u8,
+    pub key_handle: Vec<u8>,
 }
 
 pub struct AuthenticateResponse {
-    user_presence: u8,
-    counter: u32,
-    signature: Vec<u8>,
+    pub user_presence: u8,
+    pub counter: u32,
+    pub signature: Vec<u8>,
 }
 
 pub struct VersionRequest {}
 
 pub struct VersionResponse {
-    version: String,
+    pub version: String,
 }
 
 pub trait Message {
@@ -343,7 +341,7 @@ pub mod apdu {
 
     use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-    use crate::u2f::constants::{MAX_RESPONSE_LEN_EXTENDED, MAX_RESPONSE_LEN_SHORT};
+    use crate::u2f::proto::constants::{MAX_RESPONSE_LEN_EXTENDED, MAX_RESPONSE_LEN_SHORT};
     use crate::u2f::error::Error;
 
     pub trait ApduFrame {
@@ -560,6 +558,15 @@ pub mod apdu {
     pub struct Response {
         pub data: Option<Vec<u8>>,
         pub status: u16,
+    }
+
+    impl Response {
+        pub fn from_status(sw: u16) -> Self {
+            Response {
+                data: None,
+                status: sw
+            }
+        }
     }
 
     impl ApduFrame for Response {

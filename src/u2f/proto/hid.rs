@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::io::{Read, Write};
 
 pub mod hid_const {
     // From : Common U2F HID transport header - Review Draft
@@ -62,7 +62,7 @@ pub mod hid_const {
 }
 
 pub mod hid_type {
-    use crate::u2f::hid_proto::hid_const::*;
+    use crate::u2f::proto::hid::hid_const::*;
 
     pub enum Packet {
         Init {
@@ -139,20 +139,4 @@ pub mod hid_type {
     pub struct U2fHidSyncRsp {
         nonce: u8, // Client application nonce
     }
-}
-
-pub trait KeyStore {
-    fn load_key(&self, handle: &str) -> &[u8];
-    fn save_key(&self, handle: String, key: Vec<u8>) -> bool;
-}
-
-pub trait PresenceValidator {
-    fn check_user_presence(&self, timeout: Duration) -> bool;
-}
-
-pub struct VirtualHidToken {
-    attestation_cert: Vec<u8>,
-    attestation_key: Vec<u8>,
-    store: Box<KeyStore>,
-    check_user_presence_cb: Box<PresenceValidator>,
 }

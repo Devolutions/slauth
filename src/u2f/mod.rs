@@ -1,13 +1,12 @@
 use std::io::Read;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
-use std::sync::{Arc, Weak};
-use parking_lot::Mutex;
 
-pub mod constants;
 pub mod error;
-pub mod raw_message;
-pub mod hid_proto;
+pub mod proto;
+pub mod server;
+pub mod client;
+
 
 //#[test]
 //fn test_mozilla_auth() {
