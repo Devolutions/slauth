@@ -55,20 +55,20 @@ pub const U2F_VENDOR_LAST: u8 = 0xbf; // Last vendor defined command
 pub const U2F_REGISTER_ID: u8 = 0x05; // Version 2 registration identifier
 pub const U2F_REGISTER_HASH_ID: u8 = 0x00; // Version 2 hash identintifier
 
-pub struct U2fRegisterReq {
-    pub chal: [u8; U2F_CHAL_SIZE], // Challenge
-    pub app_id: [u8; U2F_APPID_SIZE], // Application id
-}
-
-pub struct U2fRegisterRsp {
-    pub register_id: u8, // Registration identifier (U2F_REGISTER_ID_V2)
-    pub pubkey: U2fEcPoint, // Generated public key
-    pub key_handle_len: u8, // Length of key handle
-    pub key_handle_cert_sig: [u8;
-        U2F_MAX_KH_SIZE +               // Key handle
-        U2F_MAX_ATT_CERT_SIZE +         // Attestation certificate
-        U2F_MAX_EC_SIG_SIZE],           // Registration signature
-}
+//pub struct U2fRegisterReq {
+//    pub chal: [u8; U2F_CHAL_SIZE], // Challenge
+//    pub app_id: [u8; U2F_APPID_SIZE], // Application id
+//}
+//
+//pub struct U2fRegisterRsp {
+//    pub register_id: u8, // Registration identifier (U2F_REGISTER_ID_V2)
+//    pub pubkey: U2fEcPoint, // Generated public key
+//    pub key_handle_len: u8, // Length of key handle
+//    pub key_handle_cert_sig: [u8;
+//        U2F_MAX_KH_SIZE +               // Key handle
+//        U2F_MAX_ATT_CERT_SIZE +         // Attestation certificate
+//        U2F_MAX_EC_SIG_SIZE],           // Registration signature
+//}
 
 // U2F_CMD_AUTHENTICATE command defines
 
@@ -80,18 +80,18 @@ pub const U2F_AUTH_CHECK_ONLY: u8 = 0x07; // Check only
 pub const U2F_AUTH_FLAG_TUP: u8 = 0x01; // Test of user presence set
 pub const U2F_AUTH_FLAG_TDOWN: u8 = 0x00; // Test of user presence set
 
-pub struct U2fAuthenticateReq {
-    pub chal: [u8; U2F_CHAL_SIZE], // Challenge
-    pub app_id: [u8; U2F_APPID_SIZE], // Application id
-    pub key_handle_len: u8, // Length of key handle
-    pub key_handle: [u8; U2F_MAX_KH_SIZE], // Key handle
-}
-
-pub struct U2fAuthenticateRsp {
-    pub flags: u8,
-    pub ctr: [u8; U2F_CTR_SIZE],
-    pub sig: [u8; U2F_MAX_EC_SIG_SIZE],
-}
+//pub struct U2fAuthenticateReq {
+//    pub chal: [u8; U2F_CHAL_SIZE], // Challenge
+//    pub app_id: [u8; U2F_APPID_SIZE], // Application id
+//    pub key_handle_len: u8, // Length of key handle
+//    pub key_handle: [u8; U2F_MAX_KH_SIZE], // Key handle
+//}
+//
+//pub struct U2fAuthenticateRsp {
+//    pub flags: u8,
+//    pub ctr: [u8; U2F_CTR_SIZE],
+//    pub sig: [u8; U2F_MAX_EC_SIG_SIZE],
+//}
 
 // Command status responses
 

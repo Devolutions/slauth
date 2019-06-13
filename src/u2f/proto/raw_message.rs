@@ -112,6 +112,10 @@ impl Message for RegisterResponse {
             let mut cursor = Cursor::new(data);
             let reserved = cursor.read_u8()?;
 
+            if reserved != U2F_REGISTER_ID {
+                return Err(Error::MalformedApdu);
+            }
+
             let mut user_public_key = [0u8; 65];
             cursor.read_exact(&mut user_public_key)?;
 

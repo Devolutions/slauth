@@ -1,7 +1,7 @@
 use serde_repr::*;
 use serde_derive::*;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
 /// FIDO U2F Transports
 pub enum Transport {
     /// Bluetooth Classic
@@ -21,14 +21,24 @@ pub enum Transport {
     UsbInternal,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Registration {
+    pub version: String,
+    pub app_id: String,
+    pub key_handle: String,
+    pub pub_key: Vec<u8>,
+    pub attestation_cert: Vec<u8>,
+}
+
 ///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
     /// The version of the protocol that the to-be-registered token must speak. E.g. "U2F_V2".
-    version: String,
+    pub version: String,
     /// The websafe-base64-encoded challenge.
-    challenge: String,
+    pub challenge: String,
 }
 
 ///
@@ -36,17 +46,17 @@ pub struct RegisterRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RegisteredKey {
     /// The version of the protocol that the to-be-registered token must speak. E.g. "U2F_V2".
-    version: String,
+    pub version: String,
     /// The registered keyHandle to use for signing, as a websafe-base64 encoding of the key handle bytes returned by the U2F token during registration.
-    key_handle: String,
+    pub key_handle: String,
     /// The transport(s) this token supports, if known by the RP.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    transports: Option<Vec<Transport>>,
+    pub transports: Option<Vec<Transport>>,
     /// The application id that the RP would like to assert for this key handle, if it's distinct from the application id for the overall request. (Ordinarily this will be omitted.)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    app_id: Option<String>,
+    pub app_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,22 +81,22 @@ pub enum U2fResponseType {
 pub struct U2fRequest {
     /// The type of request, either Register ("u2f_register_request") or  Sign ("u2f_sign_request").
     #[serde(rename = "type")]
-    req_type: U2fRequestType,
+    pub req_type: U2fRequestType,
     /// An application identifier for the request. If none is given, the origin of the calling web page is used.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    app_id: Option<String>,
+    pub app_id: Option<String>,
     /// A timeout for the FIDO Client's processing, in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    timeout_seconds: Option<u64>,
+    pub timeout_seconds: Option<u64>,
     /// An integer identifying this request from concurrent requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    request_id: Option<u64>,
+    pub request_id: Option<u64>,
     /// The specific request data
     #[serde(flatten)]
-    data: Request,
+    pub data: Request,
 }
 
 ///
@@ -94,9 +104,9 @@ pub struct U2fRequest {
 #[serde(rename_all = "camelCase")]
 pub struct U2fRegisterRequest {
     ///
-    register_requests: Vec<RegisterRequest>,
+    pub register_requests: Vec<RegisterRequest>,
     /// An array of RegisteredKeys representing the U2F tokens registered to this user.
-    registered_keys: Vec<RegisteredKey>,
+    pub registered_keys: Vec<RegisteredKey>,
 }
 
 ///
@@ -104,9 +114,9 @@ pub struct U2fRegisterRequest {
 #[serde(rename_all = "camelCase")]
 pub struct U2fSignRequest {
     /// The websafe-base64-encoded challenge.
-    challenge: String,
+    pub challenge: String,
     /// An array of RegisteredKeys representing the U2F tokens registered to this user.
-    registered_keys: Vec<RegisteredKey>,
+    pub registered_keys: Vec<RegisteredKey>,
 }
 
 ///
@@ -122,11 +132,11 @@ pub enum Request {
 pub struct U2fResponse {
     /// The type of request, either Register ("u2f_register_response") or  Sign ("u2f_sign_response").
     #[serde(rename = "type")]
-    req_type: U2fResponseType,
+    pub req_type: U2fResponseType,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    request_id: Option<u64>,
-    response_data: Response,
+    pub request_id: Option<u64>,
+    pub response_data: Response,
 }
 
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug)]
@@ -142,27 +152,27 @@ pub enum ErrorCode {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Error {
-    error_code: ErrorCode,
+pub struct ClientError {
+    pub error_code: ErrorCode,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    error_message: Option<String>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct U2fRegisterResponse {
-    version: String,
-    registration_data: String,
-    client_data: String,
+    pub version: String,
+    pub registration_data: String,
+    pub client_data: String,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct U2fSignResponse {
-    key_handle: String,
-    signature_data: String,
-    client_data: String,
+    pub key_handle: String,
+    pub signature_data: String,
+    pub client_data: String,
 }
 
 ///
@@ -171,5 +181,48 @@ pub struct U2fSignResponse {
 pub enum Response {
     Register(U2fRegisterResponse),
     Sign(U2fSignResponse),
-    Error(Error),
+    Error(ClientError),
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum ClientDataType {
+    #[serde(rename = "navigator.id.getAssertion")]
+    Authentication,
+    #[serde(rename = "navigator.id.finishEnrollment")]
+    Registration,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ClientData {
+    pub typ: ClientDataType,
+    pub challenge: String,
+    pub origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub cid_pubkey: Option<String>,
+}
+
+#[test]
+fn request_json_format() {
+    let sign_req_str = "{\"type\": \"u2f_sign_request\",\"appId\": \"https://example.com\",\"challenge\": \"YWM3OGQ5YWJhODljNzlhMDU0NTZjZDhiNmU3NWY3NGE\",\"registeredKeys\": [{\"version\": \"U2F_V2\", \"keyHandle\": \"test\", \"transports\": [\"usb\", \"nfc\"]}],\"timeoutSeconds\": 30}";
+
+    let sign_req = serde_json::from_str::<U2fRequest>(sign_req_str).unwrap();
+
+    if let U2fRequestType::Sign = sign_req.req_type {
+        assert_eq!(sign_req.app_id.unwrap(), "https://example.com");
+        assert!(sign_req.request_id.is_none());
+        assert_eq!(sign_req.timeout_seconds, Some(30));
+
+        if let Request::Sign(sign) = &sign_req.data {
+            assert_eq!(sign.challenge, "YWM3OGQ5YWJhODljNzlhMDU0NTZjZDhiNmU3NWY3NGE");
+            assert_eq!(sign.registered_keys.len(), 1);
+
+            assert!(sign.registered_keys[0].app_id.is_none());
+            assert_eq!(sign.registered_keys[0].version, "U2F_V2");
+            assert_eq!(sign.registered_keys[0].key_handle, "test");
+            assert_eq!(sign.registered_keys[0].transports, Some(vec![Transport::Usb, Transport::Nfc]));
+        }
+    } else {
+        assert!(false);
+    }
 }

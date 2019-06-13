@@ -7,8 +7,20 @@ pub enum Error {
     UnexpectedApdu(String),
     AsnFormatError(String),
     MalformedApdu,
+    Version,
     RingKeyRejected(KeyRejected),
+    Registration(String),
+    Sign(String),
     Other(String),
+    #[cfg(feature = "u2f-server")]
+    EndEntityError(webpki::Error)
+}
+
+#[cfg(feature = "u2f-server")]
+impl From<webpki::Error> for Error {
+    fn from(e: webpki::Error) -> Self {
+        Error::EndEntityError(e)
+    }
 }
 
 impl From<IoError> for Error {
