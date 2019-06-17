@@ -208,7 +208,7 @@ impl U2fSignResponse {
         } = &self;
 
         let signature_data_byte = base64::decode_config(signature_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
-        let raw_rsp = raw_message::apdu::Response::read_from(&registration_data_bytes)?;
+        let raw_rsp = raw_message::apdu::Response::read_from(&signature_data_byte)?;
         let raw_u2f_sign = raw_message::AuthenticateResponse::from_apdu(raw_rsp)?;
 
         let client_data_bytes = base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
