@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.3.0"
+version = "0.3.0-alpha"
 authors = ["richer <richer.arc@gmail.com>"]
 edition = "2018"
 description = "oath HOTP and TOTP complient implementation"
