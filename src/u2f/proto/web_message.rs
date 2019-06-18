@@ -21,7 +21,7 @@ pub enum Transport {
     UsbInternal,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Registration {
     pub version: String,

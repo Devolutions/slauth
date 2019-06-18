@@ -1,6 +1,9 @@
 use std::io::Error as IoError;
 use ring::error::{KeyRejected, Unspecified};
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 
+#[derive(Debug)]
 pub enum Error {
     IoError(IoError),
     U2FErrorCode(u16),
@@ -14,6 +17,28 @@ pub enum Error {
     Other(String),
     #[cfg(feature = "u2f-server")]
     EndEntityError(webpki::Error)
+}
+
+impl StdError for Error {}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        use Error::*;
+        match self {
+            IoError(io_e) => io_e.fmt(f),
+            U2FErrorCode(code) => write!(f, "U2f Error Code: {}", code),
+            UnexpectedApdu(s) => write!(f, "{}", s),
+            AsnFormatError(s) => write!(f, "{}", s),
+            MalformedApdu => write!(f, "Unsupported version"),
+            Version => write!(f, "Unsupported version"),
+            RingKeyRejected(key_r_e) => key_r_e.fmt(f),
+            Registration(s) => write!(f, "{}", s),
+            Sign(s) => write!(f, "{}", s),
+            Other(s) => write!(f, "{}", s),
+            #[cfg(feature = "u2f-server")]
+            EndEntityError(webpki_e) => webpki_e.fmt(f),
+        }
+    }
 }
 
 #[cfg(feature = "u2f-server")]
