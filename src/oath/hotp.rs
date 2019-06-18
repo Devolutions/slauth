@@ -1,5 +1,4 @@
-use crate::oath::utils::*;
-use crate::oath::{OTP_DEFAULT_ALG_VALUE, OTP_DEFAULT_DIGITS_VALUE};
+use super::*;
 
 pub const HOTP_DEFAULT_COUNTER_VALUE: u64 = 0;
 pub const HOTP_DEFAULT_RESYNC_VALUE: u16 = 2;

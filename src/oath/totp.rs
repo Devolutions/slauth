@@ -1,7 +1,6 @@
 use time::now_utc;
 
-use crate::oath::utils::*;
-use crate::oath::{OTP_DEFAULT_DIGITS_VALUE, OTP_DEFAULT_ALG_VALUE};
+use super::*;
 
 pub const TOTP_DEFAULT_PERIOD_VALUE: u64 = 30;
 pub const TOTP_DEFAULT_BACK_RESYNC_VALUE: u64 = 1;
