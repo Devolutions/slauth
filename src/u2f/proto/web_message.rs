@@ -1,5 +1,5 @@
-use serde_repr::*;
 use serde_derive::*;
+use serde_repr::*;
 
 #[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
 /// FIDO U2F Transports
@@ -75,6 +75,18 @@ pub enum U2fResponseType {
     Sign,
 }
 
+impl From<U2fRequestType> for U2fResponseType {
+    fn from(t: U2fRequestType) -> Self {
+        if let U2fRequestType::Register = t { U2fResponseType::Register } else { U2fResponseType::Sign }
+    }
+}
+
+impl<'a> From<&'a U2fRequestType> for U2fResponseType {
+    fn from(t: &'a U2fRequestType) -> Self {
+        if let U2fRequestType::Register = t { U2fResponseType::Register } else { U2fResponseType::Sign }
+    }
+}
+
 ///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,7 +144,7 @@ pub enum Request {
 pub struct U2fResponse {
     /// The type of request, either Register ("u2f_register_response") or  Sign ("u2f_sign_response").
     #[serde(rename = "type")]
-    pub req_type: U2fResponseType,
+    pub rsp_type: U2fResponseType,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub request_id: Option<u64>,
@@ -157,6 +169,43 @@ pub struct ClientError {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub error_message: Option<String>,
+}
+
+impl ClientError {
+    pub fn bad_request(msg: Option<String>) -> ClientError {
+        ClientError {
+            error_code: ErrorCode::BadRequest,
+            error_message: msg,
+        }
+    }
+
+    pub fn other_error(msg: Option<String>) -> ClientError {
+        ClientError {
+            error_code: ErrorCode::OtherError,
+            error_message: msg,
+        }
+    }
+
+    pub fn configuration_unsupported(msg: Option<String>) -> ClientError {
+        ClientError {
+            error_code: ErrorCode::ConfigurationUnsupported,
+            error_message: msg,
+        }
+    }
+
+    pub fn device_ineligible(msg: Option<String>) -> ClientError {
+        ClientError {
+            error_code: ErrorCode::DeviceIneligible,
+            error_message: msg,
+        }
+    }
+
+    pub fn timeout(msg: Option<String>) -> ClientError {
+        ClientError {
+            error_code: ErrorCode::Timeout,
+            error_message: msg,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]

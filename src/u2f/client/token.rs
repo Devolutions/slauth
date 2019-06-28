@@ -26,9 +26,9 @@ use crate::u2f::{
 use crate::u2f::proto::raw_message::Message;
 
 pub struct U2FSToken {
-    store: Box<KeyStore>,
-    presence_validator: Box<PresenceValidator>,
-    counter: AtomicU32,
+    pub(crate) store: Box<KeyStore>,
+    pub(crate) presence_validator: Box<PresenceValidator>,
+    pub(crate) counter: AtomicU32,
 }
 
 impl U2FSToken {

@@ -2,6 +2,9 @@ use std::io::Error as IoError;
 use ring::error::{KeyRejected, Unspecified};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
+#[cfg(feature = "u2f-server")]
+use serde_json::error::Error as SJsonError;
+use core::fmt::Pointer;
 
 #[derive(Debug)]
 pub enum Error {
@@ -16,7 +19,9 @@ pub enum Error {
     Sign(String),
     Other(String),
     #[cfg(feature = "u2f-server")]
-    EndEntityError(webpki::Error)
+    EndEntityError(webpki::Error),
+    #[cfg(feature = "u2f-server")]
+    SerdeJsonError(SJsonError),
 }
 
 impl StdError for Error {}
@@ -37,6 +42,8 @@ impl Display for Error {
             Other(s) => write!(f, "{}", s),
             #[cfg(feature = "u2f-server")]
             EndEntityError(webpki_e) => webpki_e.fmt(f),
+            #[cfg(feature = "u2f-server")]
+            SerdeJsonError(s_j_e) => s_j_e.fmt(f),
         }
     }
 }
@@ -69,6 +76,13 @@ impl From<Unspecified> for Error {
 impl From<KeyRejected> for Error {
     fn from(e: KeyRejected) -> Self {
         Error::RingKeyRejected(e)
+    }
+}
+
+#[cfg(feature = "u2f-server")]
+impl From<SJsonError> for Error {
+    fn from(e: SJsonError) -> Self {
+        Error::SerdeJsonError(e)
     }
 }
 
