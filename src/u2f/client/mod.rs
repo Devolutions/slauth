@@ -1,42 +1,35 @@
 pub mod token;
 
+pub struct SigningKey {
+    pub key_handle: String,
+    pub private_key: Vec<u8>,
+}
+
 pub mod client {
-    use crate::u2f::error::Error;
-    use crate::u2f::proto::raw_message::apdu::{Request as RawRequest, Response as RawResponse, ApduFrame};
-    use crate::u2f::proto::web_message::{U2fRequest as WebRequest, U2fResponse as WebResponse, Request, ClientData, ClientDataType, Response, U2fResponseType, ClientError, ErrorCode, U2fRequestType, U2fRegisterResponse, U2fSignResponse};
-    use crate::u2f::client::token::{U2FSToken, KeyStore, PresenceValidator};
     use std::sync::Arc;
-    use crate::u2f::proto::constants::{U2F_V2_VERSION_STR, U2F_REGISTER, U2F_AUTHENTICATE, MAX_RESPONSE_LEN_EXTENDED, U2F_AUTH_ENFORCE, U2F_AUTH_DONT_ENFORCE, U2F_SW_NO_ERROR};
-    use sha2::{Sha256, Digest};
 
-    #[derive(Clone)]
-    pub struct LocalClient {
-        default_origin: String,
-        s_token: Arc<U2FSToken>
-    }
+    use sha2::{Digest, Sha256};
 
-    impl LocalClient {
-        pub fn new(origin: &str, store: impl KeyStore + 'static, p_v: impl PresenceValidator + 'static, counter: u32) -> LocalClient {
-            LocalClient {
-                default_origin: origin.to_string(),
-                s_token: Arc::new(U2FSToken {
-                    store: Box::new(store),
-                    presence_validator: Box::new(p_v),
-                    counter: std::sync::atomic::AtomicU32::new(counter),
-                })
-            }
-        }
+    use crate::u2f::client::SigningKey;
+    use crate::u2f::client::token::{KeyStore, PresenceValidator, U2FSToken};
+    use crate::u2f::client::token;
+    use crate::u2f::error::Error;
+    use crate::u2f::proto::constants::{MAX_RESPONSE_LEN_EXTENDED, U2F_AUTH_DONT_ENFORCE, U2F_AUTH_ENFORCE, U2F_AUTHENTICATE, U2F_REGISTER, U2F_SW_NO_ERROR, U2F_V2_VERSION_STR};
+    use crate::u2f::proto::raw_message::{self, Message as RawMessageTrait};
+    use crate::u2f::proto::raw_message::apdu::{ApduFrame, Request as RawRequest, Response as RawResponse};
+    use crate::u2f::proto::web_message::{ClientData, ClientDataType, ClientError, ErrorCode, Request, Response, U2fRegisterResponse, U2fRequest as WebRequest, U2fRequestType, U2fResponse as WebResponse, U2fResponseType, U2fSignResponse};
 
-        fn handle_web_request(&self, req: &WebRequest, enforce_user: bool) -> Result<Response, Error> {
+    impl WebRequest {
+        pub(crate) fn register(&self, origin: String, attestation_cert: &[u8], attestation_key: &[u8]) -> Result<(Response, SigningKey), Error> {
             let WebRequest {
                 req_type,
                 app_id,
                 timeout_seconds,
                 request_id,
                 data,
-            } = req;
+            } = self;
 
-            let origin = app_id.as_ref().map(|a| a.clone()).unwrap_or_else(|| self.default_origin.clone());
+            let origin = app_id.as_ref().map(|a| a.clone()).unwrap_or_else(|| origin);
             let mut hasher = Sha256::new();
 
             hasher.input(&origin);
@@ -51,7 +44,7 @@ pub mod client {
                         typ: ClientDataType::Registration,
                         challenge: reg_req.challenge.clone(),
                         origin,
-                        cid_pubkey: None
+                        cid_pubkey: None,
                     };
 
                     let client_data_str = serde_json::to_string(&client_data)?;
@@ -72,34 +65,50 @@ pub mod client {
                         param_2: 0,
                         data_len: Some(64),
                         data: Some(data),
-                        max_rsp_len: Some(MAX_RESPONSE_LEN_EXTENDED)
+                        max_rsp_len: Some(MAX_RESPONSE_LEN_EXTENDED),
                     };
 
-                    let raw_rsp = self.s_token.handle_apdu_request(raw_req);
+                    let (raw_rsp, signing_key) = raw_message::RegisterRequest::from_apdu(raw_req).and_then(|reg| token::register(reg, attestation_cert, attestation_key).and_then(|(rsp, sign)| rsp.into_apdu().map(move |r| (r, sign))))?;
 
                     let mut raw_rsp_byte = Vec::new();
 
                     raw_rsp.write_to(&mut raw_rsp_byte);
 
-                    Ok(Response::Register(U2fRegisterResponse {
+                    Ok((Response::Register(U2fRegisterResponse {
                         version: U2F_V2_VERSION_STR.to_string(),
                         client_data: base64::encode_config(&client_data_str, base64::URL_SAFE_NO_PAD),
                         registration_data: base64::encode_config(&raw_rsp_byte, base64::URL_SAFE_NO_PAD),
-                    }))
+                    }), signing_key))
+                },
+
+                Request::Sign(_sign) => {
+                    Err(Error::Other("Unexpected Sign request during registration".to_string()))
+                }
+            }
+        }
+
+        pub(crate) fn sign(&self, signing_key: &SigningKey, origin: String, counter: u32, user_presence: bool) -> Result<Response, Error> {
+            let WebRequest {
+                req_type,
+                app_id,
+                timeout_seconds,
+                request_id,
+                data,
+            } = self;
+
+            let origin = app_id.as_ref().map(|a| a.clone()).unwrap_or_else(|| origin);
+            let mut hasher = Sha256::new();
+
+            hasher.input(&origin);
+
+            let application_parameter = hasher.result_reset();
+
+            match data {
+                Request::Register(_reg) => {
+                    Err(Error::Other("Unexpected Register request while signing".to_string()))
                 },
 
                 Request::Sign(sign) => {
-
-                    let key_handle = sign.registered_keys.iter().find_map(|k| {
-                        if let Some(application) = &k.app_id {
-                            if application == &origin {
-                                return Some(k.key_handle.clone())
-                            }
-                        }
-
-                        None
-                    }).ok_or_else(|| Error::Sign("At least one registed key must match the origin".to_string()))?;
-
                     let client_data = ClientData {
                         typ: ClientDataType::Authentication,
                         challenge: sign.challenge.clone(),
@@ -117,96 +126,263 @@ pub mod client {
 
                     data.extend_from_slice(challenge_param.as_slice());
                     data.extend_from_slice(application_parameter.as_slice());
-                    data.push(key_handle.len() as u8);
-                    data.extend_from_slice(key_handle.as_bytes());
+                    data.push(signing_key.key_handle.len() as u8);
+                    data.extend_from_slice(signing_key.key_handle.as_bytes());
 
                     let data_len = Some(data.len());
 
                     let raw_req = RawRequest {
                         class_byte: 0x00,
                         command_mode: U2F_AUTHENTICATE,
-                        param_1: if enforce_user {U2F_AUTH_ENFORCE} else {U2F_AUTH_DONT_ENFORCE},
+                        param_1: U2F_AUTH_DONT_ENFORCE,
                         param_2: 0,
                         data_len,
                         data: Some(data),
                         max_rsp_len: Some(MAX_RESPONSE_LEN_EXTENDED)
                     };
 
-                    let raw_rsp = self.s_token.handle_apdu_request(raw_req);
+
+
+                    let raw_rsp = raw_message::AuthenticateRequest::from_apdu(raw_req).and_then(|auth| token::sign(auth, signing_key, counter, user_presence).and_then(|rsp| rsp.into_apdu()))?;
 
                     let mut raw_rsp_byte = Vec::new();
 
                     raw_rsp.write_to(&mut raw_rsp_byte);
 
                     Ok(Response::Sign(U2fSignResponse {
-                        key_handle,
+                        key_handle: signing_key.key_handle.clone(),
                         signature_data: base64::encode_config(&raw_rsp_byte, base64::URL_SAFE_NO_PAD),
                         client_data: base64::encode_config(&client_data_str, base64::URL_SAFE_NO_PAD)
                     }))
-                },
+                }
+            }
+        }
+    }
+
+
+    #[cfg(feature = "native-bindings")]
+    mod native_bindings {
+        use std::os::raw::{c_char, c_uchar, c_uint, c_ulong, c_ulonglong, c_void};
+        use std::ptr::null_mut;
+
+        use crate::strings;
+        use crate::u2f::client::SigningKey;
+        use crate::u2f::client::token;
+
+        use super::*;
+
+        pub struct ClientWebResponse {
+            rsp: WebResponse,
+            signing_key: Option<SigningKey>,
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn web_request_from_json(req: *const c_char) -> *mut WebRequest {
+            serde_json::from_str::<WebRequest>(&strings::c_char_to_string(req)).map(|r| Box::into_raw(Box::new(r))).unwrap_or_else(|_| null_mut())
+        }
+
+        pub unsafe extern fn web_request_free(req: *mut WebRequest) {
+            let _ = Box::from_raw(req);
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn web_request_is_register(req: *mut WebRequest) -> bool {
+            let req = &*req;
+            if let U2fRequestType::Register = req.req_type {
+                return true;
+            }
+            false
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn web_request_is_sign(req: *mut WebRequest) -> bool {
+            let req = &*req;
+            if let U2fRequestType::Sign = req.req_type {
+                return true;
+            }
+            false
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn web_request_origin(req: *mut WebRequest) -> *mut c_char {
+            let req = &*req;
+            req.app_id.as_ref().map(|s| strings::string_to_c_char(s.to_owned())).unwrap_or_else(|| null_mut())
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn web_request_timeout(req: *mut WebRequest) -> c_ulonglong {
+            let req = &*req;
+            req.timeout_seconds.unwrap_or_else(|| 60)
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn web_request_key_handle(req: *mut WebRequest, origin: *const c_char) -> *mut c_char {
+            let req = &*req;
+            let origin = strings::c_char_to_string(origin);
+            if let Request::Sign(sign) = &req.data {
+                sign.registered_keys.iter().find_map(|k| {
+                    if let Some(application) = &k.app_id {
+                        if application == &origin {
+                            return Some(k.key_handle.clone())
+                        }
+                    }
+
+                    None
+                }).map(|s| strings::string_to_c_char(s)).unwrap_or_else(|| null_mut())
+            } else {
+                null_mut()
             }
         }
 
-        pub fn handle(&self, json_req: &str, enforce_user: bool) -> String {
-            let web_response = match serde_json::from_str::<WebRequest>(json_req) {
-                Ok(req) => {
-                    let request_id = req.request_id.clone();
-                    match self.handle_web_request(&req, enforce_user) {
-                        Ok(response_data) => {
-                            WebResponse {
-                                rsp_type: req.req_type.into(),
-                                request_id,
-                                response_data,
-                            }
-                        }
-                        Err(e) => {
-                            match e {
-                                Error::Registration(e) => {
-                                    WebResponse {
-                                        rsp_type: U2fResponseType::Register,
-                                        request_id,
-                                        response_data: Response::Error(ClientError::bad_request(Some(e)))
-                                    }
-                                }
+        #[no_mangle]
+        pub unsafe extern fn web_request_sign(req: *mut WebRequest, signing_key: *mut SigningKey, origin: *const c_char, counter: c_ulong, user_presence: bool) -> *mut ClientWebResponse {
+            let req = &*req;
+            let signing_key = &*signing_key;
+            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(|| String::new());
 
-                                Error::Sign(e) => {
-                                    WebResponse {
-                                        rsp_type: U2fResponseType::Sign,
-                                        request_id,
-                                        response_data: Response::Error(ClientError::bad_request(Some(e)))
-                                    }
-                                }
+            let request_id = req.request_id.clone();
 
-                                e => {
-                                    WebResponse {
-                                        rsp_type: req.req_type.into(),
-                                        request_id,
-                                        response_data: Response::Error(ClientError::other_error(Some(e.to_string())))
-                                    }
-                                }
-                            }
-                        }
+            let web_response = match req.sign(signing_key, default_origin, counter as u32, user_presence) {
+                Ok(response_data) => {
+                    WebResponse {
+                        rsp_type: U2fResponseType::from(&req.req_type),
+                        request_id,
+                        response_data,
                     }
                 }
-                Err(_e) => {
-                    WebResponse {
-                        rsp_type: U2fResponseType::Register,
-                        request_id: None,
-                        response_data: Response::Error(ClientError::bad_request(Some("Request is unintelligible".to_string())))
+                Err(e) => {
+                    match e {
+                        Error::Registration(e) => {
+                            WebResponse {
+                                rsp_type: U2fResponseType::Register,
+                                request_id,
+                                response_data: Response::Error(ClientError::bad_request(Some(e)))
+                            }
+                        }
+
+                        Error::Sign(e) => {
+                            WebResponse {
+                                rsp_type: U2fResponseType::Sign,
+                                request_id,
+                                response_data: Response::Error(ClientError::bad_request(Some(e)))
+                            }
+                        }
+
+                        e => {
+                            WebResponse {
+                                rsp_type: U2fResponseType::from(&req.req_type),
+                                request_id,
+                                response_data: Response::Error(ClientError::other_error(Some(e.to_string())))
+                            }
+                        }
                     }
                 }
             };
 
-            serde_json::to_string(&web_response).unwrap_or_else(|_e| r#"{"type": "u2f_register_response", "responseData" : {"errorCode" : 1}}"#.to_string())
+            Box::into_raw(Box::new(ClientWebResponse {
+                rsp: web_response,
+                signing_key: None
+            }))
         }
-    }
 
-    #[cfg(feature = "native-bindings")]
-    mod native_bindings {
-        use std::os::raw::{c_char, c_ulong};
-        use std::ptr::null_mut;
+        #[no_mangle]
+        pub unsafe extern fn web_request_register(req: *mut WebRequest, origin: *const c_char, attestation_cert: *const c_uchar, attestation_cert_len: c_ulonglong, attestation_key: *const c_uchar, attestation_key_len: c_ulonglong) -> *mut ClientWebResponse {
+            let req = &*req;
 
-        use super::*;
-        use crate::oath::strings;
+            let attestation_cert = std::slice::from_raw_parts(attestation_cert, attestation_cert_len as usize);
+            let attestation_key = std::slice::from_raw_parts(attestation_key, attestation_key_len as usize);
+
+            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(|| String::new());
+
+            let request_id = req.request_id.clone();
+            let mut signing_key = None;
+            let web_response = match req.register(default_origin, attestation_cert, attestation_key) {
+                Ok((response_data, s_k)) => {
+                    signing_key = Some(s_k);
+                    WebResponse {
+                        rsp_type: U2fResponseType::from(&req.req_type),
+                        request_id,
+                        response_data,
+                    }
+                }
+                Err(e) => {
+                    match e {
+                        Error::Registration(e) => {
+                            WebResponse {
+                                rsp_type: U2fResponseType::Register,
+                                request_id,
+                                response_data: Response::Error(ClientError::bad_request(Some(e)))
+                            }
+                        }
+
+                        Error::Sign(e) => {
+                            WebResponse {
+                                rsp_type: U2fResponseType::Sign,
+                                request_id,
+                                response_data: Response::Error(ClientError::bad_request(Some(e)))
+                            }
+                        }
+
+                        e => {
+                            WebResponse {
+                                rsp_type: U2fResponseType::from(&req.req_type),
+                                request_id,
+                                response_data: Response::Error(ClientError::other_error(Some(e.to_string())))
+                            }
+                        }
+                    }
+                }
+            };
+
+            Box::into_raw(Box::new(ClientWebResponse {
+                rsp: web_response,
+                signing_key
+            }))
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn client_web_response_free(rsp: *mut ClientWebResponse) {
+            let _ = Box::from_raw(rsp);
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn client_web_response_to_json(rsp: *mut ClientWebResponse) -> *mut c_char {
+            let rsp = &*rsp;
+            strings::string_to_c_char(serde_json::to_string(&rsp.rsp).unwrap_or_else(|_| r#"{"type": "u2f_register_response", "responseData" : {"errorCode" : 1}}"#.to_string()))
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn client_web_response_signing_key(rsp: *mut ClientWebResponse) -> *mut SigningKey {
+            let rsp = &mut *rsp;
+            rsp.signing_key.take().map(|s| Box::into_raw(Box::new(s))).unwrap_or_else(|| null_mut())
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn signing_key_free(s: *mut SigningKey) {
+            let _ = Box::from_raw(s);
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn signing_key_to_string(s: *mut SigningKey) -> *mut c_char {
+            let SigningKey {
+                key_handle,
+                private_key,
+            } = &*s;
+
+            strings::string_to_c_char(format!("{}.{}", key_handle, base64::encode_config(private_key, base64::URL_SAFE_NO_PAD)))
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn signing_key_from_string(s: *const c_char) -> *mut SigningKey {
+            strings::c_char_to_string_checked(s).and_then(|s| {
+                let mut parts = s.split('.');
+                let l = parts.next().and_then(|key_handle| parts.next().map(|b64| (key_handle, b64)));
+
+                l.and_then(|(k, b64)| base64::decode_config(b64, base64::URL_SAFE_NO_PAD).ok().map(|b64_v| (k.to_string(), b64_v)))
+            }).map(|(key_handle, key)| Box::into_raw(Box::new(SigningKey {
+                key_handle,
+                private_key: key
+            }))).unwrap_or_else(|| null_mut())
+        }
     }
 }

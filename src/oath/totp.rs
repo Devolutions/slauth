@@ -278,6 +278,7 @@ impl OtpAuth for TOTPContext {
 mod native_bindings {
     use std::os::raw::{c_char, c_ulong};
     use std::ptr::null_mut;
+    use crate::strings;
 
     use super::*;
 

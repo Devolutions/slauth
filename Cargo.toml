@@ -19,8 +19,8 @@ name = "slauth"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [features]
-default = ["u2f-server"]
-native-bindings = []
+default = ["u2f-server", "native-bindings"]
+native-bindings = ["libc"]
 u2f-server = ["u2f", "serde_json", "webpki"]
 u2f = ["base64", "byteorder", "ring", "untrusted", "serde", "serde_repr", "serde_derive"]
 
@@ -40,6 +40,7 @@ serde_repr = { version = "0.1.4", optional = true }
 serde_derive = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 webpki = { version = "0.19.1", optional = true }
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 hex = "0.3.2"

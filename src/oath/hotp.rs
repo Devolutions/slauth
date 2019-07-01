@@ -228,6 +228,7 @@ mod native_bindings {
     use std::os::raw::c_char;
     use std::ptr::null_mut;
 
+    use crate::strings;
     use super::*;
 
     #[no_mangle]
