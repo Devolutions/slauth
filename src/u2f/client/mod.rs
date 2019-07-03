@@ -17,11 +17,11 @@ pub mod client {
     use crate::u2f::proto::constants::{MAX_RESPONSE_LEN_EXTENDED, U2F_AUTH_DONT_ENFORCE, U2F_AUTH_ENFORCE, U2F_AUTHENTICATE, U2F_REGISTER, U2F_SW_NO_ERROR, U2F_V2_VERSION_STR};
     use crate::u2f::proto::raw_message::{self, Message as RawMessageTrait};
     use crate::u2f::proto::raw_message::apdu::{ApduFrame, Request as RawRequest, Response as RawResponse};
-    use crate::u2f::proto::web_message::{ClientData, ClientDataType, ClientError, ErrorCode, Request, Response, U2fRegisterResponse, U2fRequest as WebRequest, U2fRequestType, U2fResponse as WebResponse, U2fResponseType, U2fSignResponse};
+    use crate::u2f::proto::web_message::{ClientData, ClientDataType, ClientError, ErrorCode, Request, Response, U2fRegisterResponse, U2fRequest, U2fRequestType, U2fResponse as WebResponse, U2fResponseType, U2fSignResponse};
 
-    impl WebRequest {
+    impl U2fRequest {
         pub(crate) fn register(&self, origin: String, attestation_cert: &[u8], attestation_key: &[u8]) -> Result<(Response, SigningKey), Error> {
-            let WebRequest {
+            let U2fRequest {
                 req_type,
                 app_id,
                 timeout_seconds,
@@ -88,7 +88,7 @@ pub mod client {
         }
 
         pub(crate) fn sign(&self, signing_key: &SigningKey, origin: String, counter: u32, user_presence: bool) -> Result<Response, Error> {
-            let WebRequest {
+            let U2fRequest {
                 req_type,
                 app_id,
                 timeout_seconds,
@@ -170,17 +170,21 @@ pub mod client {
         use crate::u2f::client::token;
 
         use super::*;
+        use crate::u2f::proto::web_message::U2fRequest;
 
         pub struct ClientWebResponse {
             rsp: WebResponse,
             signing_key: Option<SigningKey>,
         }
 
+        pub type WebRequest = U2fRequest;
+
         #[no_mangle]
         pub unsafe extern fn web_request_from_json(req: *const c_char) -> *mut WebRequest {
-            serde_json::from_str::<WebRequest>(&strings::c_char_to_string(req)).map(|r| Box::into_raw(Box::new(r))).unwrap_or_else(|_| null_mut())
+            serde_json::from_str::<WebRequest>(&strings::c_char_to_string(req)).map_err(|e| println!("Unable to create web request from json: {}", e)).map(|r| Box::into_raw(Box::new(r))).unwrap_or_else(|_| null_mut())
         }
 
+        #[no_mangle]
         pub unsafe extern fn web_request_free(req: *mut WebRequest) {
             let _ = Box::from_raw(req);
         }

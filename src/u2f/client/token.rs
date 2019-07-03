@@ -23,14 +23,14 @@ use crate::u2f::{
         },
     },
 };
-use crate::u2f::proto::raw_message::Message;
 use crate::u2f::client::SigningKey;
+use crate::u2f::proto::raw_message::Message;
 
 pub(crate) fn gen_key_handle(app_id: &[u8], chall: &[u8]) -> String {
     let mut data = Vec::with_capacity(app_id.len() + chall.len());
     data.extend_from_slice(app_id);
     data.extend_from_slice(chall);
-    format!("{:x?}", digest::digest(&digest::SHA512, data.as_slice()).as_ref())
+    base32::encode(base32::Alphabet::RFC4648 { padding: false }, &data)
 }
 
 pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: &[u8]) -> Result<(RegisterResponse, SigningKey), Error> {
@@ -41,17 +41,17 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
 
     // Generate a key pair in PKCS#8 (v2) format.
     let rng = rand::SystemRandom::new();
-    let pkcs8_doc = signature::EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &rng)?;
+    let registered_key_pkcs8_doc = signature::EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, &rng)?;
 
-    let pkcs8_bytes = pkcs8_doc.as_ref();
+    let registered_key_pkcs8_bytes = registered_key_pkcs8_doc.as_ref();
 
     let key_handle = gen_key_handle(&application, &challenge);
 
-    let key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(pkcs8_bytes))?;
-    let pub_key = key_pair.public_key();
+    let registered_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(registered_key_pkcs8_bytes))?;
+    let registered_pub_key = registered_key_pair.public_key();
     let mut user_public_key = [0u8; U2F_EC_POINT_SIZE];
 
-    pub_key.as_ref().read_exact(&mut user_public_key)?;
+    registered_pub_key.as_ref().read_exact(&mut user_public_key)?;
 
     let key_handle_lenght = key_handle.len() as u8;
 
@@ -71,18 +71,22 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
 
     let signature = sig.as_ref().to_vec();
 
-    Ok((RegisterResponse {
-        reserved: U2F_REGISTER_ID,
-        user_public_key,
-        key_handle_lenght,
-        key_handle: key_handle.clone(),
-        attestation_cert: attestation_cert.to_vec(),
-        signature,
-    },
-        SigningKey {
-            key_handle,
-            private_key: pkcs8_bytes.to_vec(),
-        }))
+    Ok(
+        (
+            RegisterResponse {
+                reserved: U2F_REGISTER_ID,
+                user_public_key,
+                key_handle_lenght,
+                key_handle: key_handle.clone(),
+                attestation_cert: attestation_cert.to_vec(),
+                signature,
+            },
+            SigningKey {
+                key_handle,
+                private_key: registered_key_pkcs8_bytes.to_vec(),
+            }
+        )
+    )
 }
 
 pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, user_presence: bool) -> Result<AuthenticateResponse, Error> {
@@ -94,8 +98,6 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
         key_handle,
     } = req;
 
-    let expected_key_handle = gen_key_handle(&application, &challenge);
-
     if !user_presence && control == U2F_AUTH_ENFORCE {
         return Err(Error::U2FErrorCode(U2F_SW_CONDITIONS_NOT_SATISFIED));
     }
@@ -104,35 +106,27 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
 
     match control {
         U2F_AUTH_CHECK_ONLY => {
-            if signing_key.key_handle == expected_key_handle {
-                return Err(Error::U2FErrorCode(U2F_SW_CONDITIONS_NOT_SATISFIED));
-            }
-
-            Err(Error::U2FErrorCode(U2F_SW_WRONG_DATA))
+            return Err(Error::U2FErrorCode(U2F_SW_CONDITIONS_NOT_SATISFIED));
         }
         U2F_AUTH_ENFORCE | U2F_AUTH_DONT_ENFORCE => {
-            if signing_key.key_handle == expected_key_handle {
-                let rng = rand::SystemRandom::new();
-                let key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(signing_key.private_key.as_slice()))?;
+            let rng = rand::SystemRandom::new();
+            let key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(signing_key.private_key.as_slice()))?;
 
-                let mut tbs_vec = Vec::with_capacity(U2F_AUTH_MAX_DATA_TBS_SIZE);
-                tbs_vec.extend_from_slice(&application);
-                tbs_vec.push(user_presence);
-                tbs_vec.extend_from_slice(&counter.to_be_bytes());
-                tbs_vec.extend_from_slice(&challenge);
+            let mut tbs_vec = Vec::with_capacity(U2F_AUTH_MAX_DATA_TBS_SIZE);
+            tbs_vec.extend_from_slice(&application);
+            tbs_vec.push(user_presence);
+            tbs_vec.extend_from_slice(&counter.to_be_bytes());
+            tbs_vec.extend_from_slice(&challenge);
 
-                let sign_input = untrusted::Input::from(tbs_vec.as_slice());
-                let sig = key_pair.sign(&rng, sign_input)?;
-                let signature = sig.as_ref().to_vec();
+            let sign_input = untrusted::Input::from(tbs_vec.as_slice());
+            let sig = key_pair.sign(&rng, sign_input)?;
+            let signature = sig.as_ref().to_vec();
 
-                return Ok(AuthenticateResponse {
-                    user_presence,
-                    counter,
-                    signature,
-                });
-            }
-
-            Err(Error::U2FErrorCode(U2F_SW_WRONG_DATA))
+            Ok(AuthenticateResponse {
+                user_presence,
+                counter,
+                signature,
+            })
         }
         _ => {
             Err(Error::U2FErrorCode(U2F_SW_INS_NOT_SUPPORTED))
@@ -198,15 +192,17 @@ impl U2FSToken {
     fn authenticate(&self, req: AuthenticateRequest, timeout: Option<Duration>) -> Result<AuthenticateResponse, Error> {
         let expected_key_handle = gen_key_handle(&req.application, &req.challenge);
 
-        if let Some(pk_bytes) = self.store.load(expected_key_handle.as_ref()) {
+        let expected_key_handle = String::from_utf8_lossy(req.key_handle.as_slice()).to_string();
+
+        if let Some(pk_bytes) = self.store.load(expected_key_handle.as_str()) {
             return sign(
                 req,
                 &SigningKey {
                     key_handle: expected_key_handle,
-                    private_key: pk_bytes.to_vec()
+                    private_key: pk_bytes.to_vec(),
                 },
                 self.counter.fetch_add(1, Ordering::Relaxed),
-                self.presence_validator.check_user_presence(timeout.unwrap_or_else(|| Duration::from_secs(10)))
+                self.presence_validator.check_user_presence(timeout.unwrap_or_else(|| Duration::from_secs(10))),
             );
         }
 

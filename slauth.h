@@ -135,6 +135,10 @@ typedef struct SigningKey SigningKey;
 
 typedef struct TOTPContext TOTPContext;
 
+typedef struct U2fRequest U2fRequest;
+
+typedef U2fRequest WebRequest;
+
 void client_web_response_free(ClientWebResponse *rsp);
 
 SigningKey *client_web_response_signing_key(ClientWebResponse *rsp);
@@ -174,6 +178,8 @@ char *totp_to_uri(TOTPContext *totp, const char *label, const char *issuer);
 bool totp_validate_current(TOTPContext *totp, const char *code);
 
 bool totp_verify(TOTPContext *totp, const char *code);
+
+void web_request_free(WebRequest *req);
 
 WebRequest *web_request_from_json(const char *req);
 

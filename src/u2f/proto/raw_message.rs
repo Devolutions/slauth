@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read, Write};
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt, LittleEndian};
 
 use crate::u2f::error::Error;
 use crate::u2f::proto::constants::*;
@@ -258,7 +258,7 @@ impl Message for AuthenticateResponse {
             let mut cursor = Cursor::new(data);
 
             let user_presence = cursor.read_u8()?;
-            let counter = cursor.read_u32::<BigEndian>()?;
+            let counter = cursor.read_u32::<LittleEndian>()?;
 
             let mut signature = vec![0u8; data_len - cursor.position() as usize];
             cursor.read_exact(&mut signature[..])?;
