@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["richer <richer.arc@gmail.com>"]
 edition = "2018"
 description = "oath HOTP and TOTP complient implementation"
@@ -11,7 +11,37 @@ readme = "README.md"
 keywords = ["TOTP", "HOTP", "2FA", "MFA"]
 license = "MIT"
 
+[target.'cfg(target_os="android")'.dependencies]
+jni = { version = "0.12", default-features = false }
+
+[lib]
+name = "slauth"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[features]
+default = ["u2f-server", "native-bindings"]
+native-bindings = []
+u2f-server = ["u2f", "webpki"]
+u2f = ["base64", "byteorder", "ring", "untrusted", "serde", "serde_repr", "serde_derive", "serde_json", "serde_bytes"]
+
 [dependencies]
-ring = "0.14.6"
-base32 = "0.4.0"
+sha2 = "0.8.0"
+hmac = "0.7.0"
+sha-1 = "0.8.1"
 time = "0.1.42"
+base32 = "0.4.0"
+
+base64 = { version = "0.10.1", optional = true }
+byteorder = { version = "1.3.1", optional = true }
+ring = { version = "0.14.6", optional = true }
+untrusted = { version = "0.6.2", optional = true }
+serde = { version = "1.0", optional = true }
+serde_repr = { version = "0.1.4", optional = true }
+serde_derive = { version = "1.0", optional = true }
+serde_bytes = { version = "0.11.1", optional = true }
+serde_json = { version = "1.0", optional = true }
+webpki = { version = "0.19.1", optional = true }
+
+[dev-dependencies]
+hex = "0.3.2"
+serde_json = "1.0.39"

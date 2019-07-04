@@ -1,15 +1,13 @@
-use ring::hmac::{SigningKey, sign};
-use crate::utils::*;
-use time::{now_utc};
+use time::now_utc;
+
+use super::*;
 
 pub const TOTP_DEFAULT_PERIOD_VALUE: u64 = 30;
 pub const TOTP_DEFAULT_BACK_RESYNC_VALUE: u64 = 1;
 pub const TOTP_DEFAULT_FORWARD_RESYNC_VALUE: u64 = 1;
-pub const TOTP_DEFAULT_DIGITS_VALUE: usize = 6;
-pub const TOTP_DEFAULT_ALG_VALUE: SlauthAlgoritm = SlauthAlgoritm::SHA1;
 
 pub struct TOTPBuilder {
-    alg: Option<SlauthAlgoritm>,
+    alg: Option<HashesAlgorithm>,
     period: Option<u64>,
     backward_resync: Option<u64>,
     forward_resync: Option<u64>,
@@ -32,7 +30,7 @@ impl TOTPBuilder {
         }
     }
 
-    pub fn algorithm(mut self, alg: SlauthAlgoritm) -> Self {
+    pub fn algorithm(mut self, alg: HashesAlgorithm) -> Self {
         self.alg = Some(alg);
         self
     }
@@ -74,16 +72,16 @@ impl TOTPBuilder {
             initial_time
         } = self;
 
-        let alg = alg.unwrap_or_else(|| TOTP_DEFAULT_ALG_VALUE);
+        let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
         let secret = secret.unwrap_or_else(|| vec![]);
-        let secret_key = SigningKey::new(alg.alg_ref(), secret.as_slice());
+        let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         TOTPContext {
             alg,
             period: period.unwrap_or_else(|| TOTP_DEFAULT_PERIOD_VALUE),
             backward_resync: backward_resync.unwrap_or_else(|| TOTP_DEFAULT_BACK_RESYNC_VALUE),
             forward_resync: forward_resync.unwrap_or_else(|| TOTP_DEFAULT_FORWARD_RESYNC_VALUE),
-            digits: digits.unwrap_or_else(|| TOTP_DEFAULT_DIGITS_VALUE),
+            digits: digits.unwrap_or_else(|| OTP_DEFAULT_DIGITS_VALUE),
             secret,
             secret_key,
             initial_time: initial_time.unwrap_or_else(|| 0),
@@ -93,7 +91,7 @@ impl TOTPBuilder {
 }
 
 pub struct TOTPContext {
-    alg: SlauthAlgoritm,
+    alg: HashesAlgorithm,
     period: u64,
     backward_resync: u64,
     forward_resync: u64,
@@ -101,7 +99,7 @@ pub struct TOTPContext {
     clock_drift: i64,
     digits: usize,
     secret: Vec<u8>,
-    secret_key: SigningKey,
+    secret_key: MacHashKey,
 }
 
 impl TOTPContext {
@@ -110,9 +108,17 @@ impl TOTPContext {
         TOTPBuilder::new()
     }
 
-    /// Generate the current HOTP code corresponding to the counter value
+    /// Generate the current TOTP code corresponding to the counter value
     pub fn gen(&self) -> String {
-        let mut counter = ((now_utc().to_timespec().sec as u64 - self.initial_time) / self.period) as u64;
+        self.gen_with(0)
+
+    }
+
+    /// Generate the current TOTP code corresponding to the counter value
+    /// Note that elapsed represent the time between the actual time you want in to be generated for and now.
+    /// E.g. if you want a code valid exactly 68 sec ago, elapsed value would be 68
+    pub fn gen_with(&self, elapsed: u64) -> String {
+        let mut counter = ((now_utc().to_timespec().sec as u64 - elapsed - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
@@ -121,7 +127,6 @@ impl TOTPContext {
         }
 
         self.gen_at(counter)
-
     }
 
     /// Check if a code equal the current value at the counter
@@ -171,8 +176,7 @@ impl TOTPContext {
     fn gen_at(&self, t: u64) -> String {
         let c_b_e = t.to_be_bytes();
 
-        let hs_sig = sign(&self.secret_key, &c_b_e[..]);
-
+        let hs_sig = self.secret_key.sign(&c_b_e[..]).expect("This should not happen since HMAC can take key of any size").into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
         let s_num = s_bits % (10 as u32).pow(self.digits as u32);
@@ -214,9 +218,9 @@ impl OtpAuth for TOTPContext {
             param_it_opt.ok_or_else(|| { "Otpauth uri is malformed, missing parameters".to_string() })
                 .and_then(|param_it| {
                     let mut secret = Vec::<u8>::new();
-                    let mut period = 30;
-                    let mut alg = TOTP_DEFAULT_ALG_VALUE;
-                    let mut digits = 6;
+                    let mut period = TOTP_DEFAULT_PERIOD_VALUE;
+                    let mut alg = OTP_DEFAULT_ALG_VALUE;
+                    let mut digits = OTP_DEFAULT_DIGITS_VALUE;
 
                     for s_param in param_it {
                         let mut s_param_it = s_param.split('=');
@@ -228,9 +232,9 @@ impl OtpAuth for TOTPContext {
                             }
                             Some("algorithm") => {
                                 alg = match s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing algorithm value".to_string() })? {
-                                    "SHA256" => SlauthAlgoritm::SHA256,
-                                    "SHA512" => SlauthAlgoritm::SHA512,
-                                    _ => SlauthAlgoritm::SHA1,
+                                    "SHA256" => HashesAlgorithm::SHA256,
+                                    "SHA512" => HashesAlgorithm::SHA512,
+                                    _ => HashesAlgorithm::SHA1,
                                 };
                                 continue
                             }
@@ -250,7 +254,7 @@ impl OtpAuth for TOTPContext {
                         return Err("Otpauth uri is malformed".to_string());
                     }
 
-                    let secret_key = SigningKey::new(alg.alg_ref(), secret.as_slice());
+                    let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
                     Ok(TOTPContext {
                         alg,
@@ -270,13 +274,69 @@ impl OtpAuth for TOTPContext {
     }
 }
 
+#[cfg(feature = "native-bindings")]
+mod native_bindings {
+    use std::os::raw::{c_char, c_ulong};
+    use std::ptr::null_mut;
+    use crate::strings;
+
+    use super::*;
+
+    #[no_mangle]
+    pub unsafe extern fn totp_from_uri(uri: *const c_char) -> *mut TOTPContext {
+        let uri_str = strings::c_char_to_string(uri);
+        Box::into_raw(TOTPContext::from_uri(&uri_str).map(|h| Box::new(h)).unwrap_or_else(|_| Box::from_raw(null_mut())))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_free(totp: *mut TOTPContext) {
+        let _ = Box::from_raw(totp);
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_to_uri(totp: *mut TOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
+        let totp = &*totp;
+        let label = strings::c_char_to_string(label);
+        let label_opt = if label.len() > 0 {Some(label.as_str())} else {None};
+        let issuer = strings::c_char_to_string(issuer);
+        let issuer_opt = if issuer.len() > 0 {Some(issuer.as_str())} else {None};
+        strings::string_to_c_char(totp.to_uri(label_opt, issuer_opt))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_gen(totp: *mut TOTPContext) -> *mut c_char {
+        let totp = &*totp;
+        strings::string_to_c_char(totp.gen())
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
+        let totp = &*totp;
+        strings::string_to_c_char(totp.gen_with(elapsed as u64))
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_verify(totp: *mut TOTPContext, code: *const c_char) -> bool {
+        let totp = &mut *totp;
+        let value = strings::c_char_to_string(code);
+        totp.verify(&value)
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn totp_validate_current(totp: *mut TOTPContext, code: *const c_char) -> bool {
+        let totp = &*totp;
+        let value = strings::c_char_to_string(code);
+        totp.validate_current(&value)
+    }
+}
+
 #[test]
 fn test_multiple() {
     const MK_ULTRA: &'static str = "patate";
 
     let mut server = TOTPContext::builder().period(5).secret(MK_ULTRA.as_bytes()).build();
 
-    let mut client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
+    let client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
 
     for _ in 0..10 {
         use std::thread::sleep;
@@ -292,7 +352,7 @@ fn test_clock_drifting() {
 
     let mut server = TOTPContext::builder().period(5).secret(MK_ULTRA.as_bytes()).re_sync_parameter(3, 3).build();
 
-    let mut client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
+    let client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
 
     for _ in 0..10 {
         let client_code = client.gen();
@@ -302,4 +362,17 @@ fn test_clock_drifting() {
         dbg!(&server.clock_drift);
         assert!(server.verify(&client_code));
     }
+}
+
+#[test]
+fn test_gen_with() {
+    let totp = TOTPContext::from_uri("otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example").unwrap();
+
+    let code1 = totp.gen();
+
+    std::thread::sleep(std::time::Duration::from_secs(31));
+
+    let code2 = totp.gen_with(31);
+
+    assert_eq!(code1, code2);
 }
