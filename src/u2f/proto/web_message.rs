@@ -27,7 +27,9 @@ pub struct Registration {
     pub version: String,
     pub app_id: String,
     pub key_handle: String,
+    #[serde(with = "serde_bytes")]
     pub pub_key: Vec<u8>,
+    #[serde(with = "serde_bytes")]
     pub attestation_cert: Vec<u8>,
 }
 
