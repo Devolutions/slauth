@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use ring::{
-    digest,
     rand,
     signature::{self, KeyPair},
 };
@@ -94,8 +93,8 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
         control,
         challenge,
         application,
-        key_h_len,
-        key_handle,
+        key_h_len: _,
+        key_handle: _,
     } = req;
 
     if !user_presence && control == U2F_AUTH_ENFORCE {
@@ -190,8 +189,6 @@ impl U2FSToken {
     }
 
     fn authenticate(&self, req: AuthenticateRequest, timeout: Option<Duration>) -> Result<AuthenticateResponse, Error> {
-        let expected_key_handle = gen_key_handle(&req.application, &req.challenge);
-
         let expected_key_handle = String::from_utf8_lossy(req.key_handle.as_slice()).to_string();
 
         if let Some(pk_bytes) = self.store.load(expected_key_handle.as_str()) {

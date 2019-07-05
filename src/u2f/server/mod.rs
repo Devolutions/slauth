@@ -202,7 +202,7 @@ impl U2fSignResponse {
     ///
     pub fn validate_signature(&self, public_key: &[u8]) -> Result<bool, Error> {
         let U2fSignResponse {
-            key_handle,
+            key_handle: _,
             signature_data,
             client_data,
         } = &self;

@@ -163,6 +163,8 @@ void signing_key_free(SigningKey *s);
 
 SigningKey *signing_key_from_string(const char *s);
 
+char *signing_key_get_key_handle(SigningKey *s);
+
 char *signing_key_to_string(SigningKey *s);
 
 void totp_free(TOTPContext *totp);

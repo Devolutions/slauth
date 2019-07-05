@@ -2,7 +2,8 @@
 
 cbindgen src/lib.rs -l c > slauth.h
 
-cargo build --target aarch64-linux-android --release
-cargo build --target armv7-linux-androideabi --release
-cargo build --target i686-linux-android --release
-cargo build --target x86_64-linux-android --release
+export PATH=$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin:$PATH
+CC=aarch64-linux-android21-clang cargo build --target aarch64-linux-android --release
+CC=armv7a-linux-androideabi21-clang cargo build --target armv7-linux-androideabi --release
+CC=i686-linux-android21-clang cargo build --target i686-linux-android --release
+CC=x86_64-linux-android21-clang cargo build --target x86_64-linux-android --release

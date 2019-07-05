@@ -1,5 +1,3 @@
-use std::io::{Read, Write};
-
 pub mod hid_const {
     // From : Common U2F HID transport header - Review Draft
     // 2014-10-08
@@ -62,6 +60,8 @@ pub mod hid_const {
 }
 
 pub mod hid_type {
+    #![allow(dead_code)]
+
     use crate::u2f::proto::hid::hid_const::*;
 
     pub enum Packet {

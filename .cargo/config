@@ -1,15 +1,15 @@
-[target.x86_64-linux-android]
-ar = "android/NDK/x86/bin/x86_64-linux-android-ar"
-linker = "android/NDK/x86_64/bin/x86_64-linux-android-clang"
-
 [target.aarch64-linux-android]
-ar = "android/NDK/arm64/bin/aarch64-linux-android-ar"
-linker = "android/NDK/arm64/bin/aarch64-linux-android-clang"
+ar = "aarch64-linux-android-ar"
+linker = "aarch64-linux-android21-clang"
 
 [target.armv7-linux-androideabi]
-ar = "android/NDK/arm/bin/arm-linux-androideabi-ar"
-linker = "android/NDK/arm/bin/arm-linux-androideabi-clang"
+ar = "arm-linux-androideabi-ar"
+linker = "armv7a-linux-androideabi21-clang"
 
 [target.i686-linux-android]
-ar = "android/NDK/x86/bin/i686-linux-android-ar"
-linker = "android/NDK/x86/bin/i686-linux-android-clang"
+ar = "i686-linux-android-ar"
+linker = "i686-linux-android21-clang"
+
+[target.x86_64-linux-android]
+ar = "x86_64-linux-android-ar"
+linker = "x86_64-linux-android21-clang"

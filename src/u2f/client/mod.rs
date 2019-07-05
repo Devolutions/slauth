@@ -6,26 +6,23 @@ pub struct SigningKey {
 }
 
 pub mod client {
-    use std::sync::Arc;
-
     use sha2::{Digest, Sha256};
 
     use crate::u2f::client::SigningKey;
-    use crate::u2f::client::token::{KeyStore, PresenceValidator, U2FSToken};
     use crate::u2f::client::token;
     use crate::u2f::error::Error;
-    use crate::u2f::proto::constants::{MAX_RESPONSE_LEN_EXTENDED, U2F_AUTH_DONT_ENFORCE, U2F_AUTH_ENFORCE, U2F_AUTHENTICATE, U2F_REGISTER, U2F_SW_NO_ERROR, U2F_V2_VERSION_STR};
+    use crate::u2f::proto::constants::{MAX_RESPONSE_LEN_EXTENDED, U2F_AUTH_DONT_ENFORCE, U2F_AUTHENTICATE, U2F_REGISTER, U2F_V2_VERSION_STR};
     use crate::u2f::proto::raw_message::{self, Message as RawMessageTrait};
-    use crate::u2f::proto::raw_message::apdu::{ApduFrame, Request as RawRequest, Response as RawResponse};
-    use crate::u2f::proto::web_message::{ClientData, ClientDataType, ClientError, ErrorCode, Request, Response, U2fRegisterResponse, U2fRequest, U2fRequestType, U2fResponse as WebResponse, U2fResponseType, U2fSignResponse};
+    use crate::u2f::proto::raw_message::apdu::{ApduFrame, Request as RawRequest};
+    use crate::u2f::proto::web_message::{ClientData, ClientDataType, ClientError, Request, Response, U2fRegisterResponse, U2fRequest, U2fRequestType, U2fResponse as WebResponse, U2fResponseType, U2fSignResponse};
 
     impl U2fRequest {
         pub(crate) fn register(&self, origin: String, attestation_cert: &[u8], attestation_key: &[u8]) -> Result<(Response, SigningKey), Error> {
             let U2fRequest {
-                req_type,
+                req_type: _,
                 app_id,
-                timeout_seconds,
-                request_id,
+                timeout_seconds: _,
+                request_id: _,
                 data,
             } = self;
 
@@ -72,7 +69,7 @@ pub mod client {
 
                     let mut raw_rsp_byte = Vec::new();
 
-                    raw_rsp.write_to(&mut raw_rsp_byte);
+                    let _ = raw_rsp.write_to(&mut raw_rsp_byte);
 
                     Ok((Response::Register(U2fRegisterResponse {
                         version: U2F_V2_VERSION_STR.to_string(),
@@ -89,10 +86,10 @@ pub mod client {
 
         pub(crate) fn sign(&self, signing_key: &SigningKey, origin: String, counter: u32, user_presence: bool) -> Result<Response, Error> {
             let U2fRequest {
-                req_type,
+                req_type: _,
                 app_id,
-                timeout_seconds,
-                request_id,
+                timeout_seconds: _,
+                request_id: _,
                 data,
             } = self;
 
@@ -147,7 +144,7 @@ pub mod client {
 
                     let mut raw_rsp_byte = Vec::new();
 
-                    raw_rsp.write_to(&mut raw_rsp_byte);
+                    let _ = raw_rsp.write_to(&mut raw_rsp_byte);
 
                     Ok(Response::Sign(U2fSignResponse {
                         key_handle: signing_key.key_handle.clone(),
@@ -162,12 +159,11 @@ pub mod client {
 
     #[cfg(feature = "native-bindings")]
     mod native_bindings {
-        use std::os::raw::{c_char, c_uchar, c_uint, c_ulong, c_ulonglong, c_void};
+        use std::os::raw::{c_char, c_uchar, c_ulong, c_ulonglong};
         use std::ptr::null_mut;
 
         use crate::strings;
         use crate::u2f::client::SigningKey;
-        use crate::u2f::client::token;
 
         use super::*;
         use crate::u2f::proto::web_message::U2fRequest;
@@ -374,6 +370,12 @@ pub mod client {
             } = &*s;
 
             strings::string_to_c_char(format!("{}.{}", key_handle, base64::encode_config(private_key, base64::URL_SAFE_NO_PAD)))
+        }
+
+        #[no_mangle]
+        pub unsafe extern fn signing_key_get_key_handle(s: *mut SigningKey) -> *mut c_char {
+            let s = &*s;
+            strings::string_to_c_char(s.key_handle.clone())
         }
 
         #[no_mangle]

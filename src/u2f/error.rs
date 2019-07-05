@@ -4,7 +4,6 @@ use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 #[cfg(feature = "u2f-server")]
 use serde_json::error::Error as SJsonError;
-use core::fmt::Pointer;
 
 #[derive(Debug)]
 pub enum Error {
