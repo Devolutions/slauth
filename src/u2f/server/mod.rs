@@ -202,9 +202,9 @@ impl U2fSignResponse {
     ///
     pub fn validate_signature(&self, public_key: &[u8]) -> Result<bool, Error> {
         let U2fSignResponse {
-            key_handle: _,
             signature_data,
             client_data,
+            ..
         } = &self;
 
         let signature_data_byte = base64::decode_config(signature_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;

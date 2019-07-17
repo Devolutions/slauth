@@ -504,29 +504,29 @@ pub mod apdu {
                 max_rsp_len
             } = self;
 
-            let _ = writer.write_u8(class_byte)?;
-            let _ = writer.write_u8(command_mode)?;
-            let _ = writer.write_u8(param_1)?;
-            let _ = writer.write_u8(param_2)?;
+            writer.write_u8(class_byte)?;
+            writer.write_u8(command_mode)?;
+            writer.write_u8(param_1)?;
+            writer.write_u8(param_2)?;
 
             let mut l_e_offset = true;
 
-            if let Some((data_len, mut data)) = data_len.and_then(|l| data.and_then(move |d| Some((l, d)))) {
+            if let Some((data_len, data)) = data_len.and_then(|l| data.and_then(move |d| Some((l, d)))) {
                 l_e_offset = false;
-                let _ = writer.write_u8(0x00)?;
-                let _ = writer.write_u16::<BigEndian>(data_len as u16)?;
-                let _ = writer.write_all(&mut data[..])?;
+                writer.write_u8(0x00)?;
+                writer.write_u16::<BigEndian>(data_len as u16)?;
+                writer.write_all(&data[..])?;
             }
 
             if let Some(max_len) = max_rsp_len {
                 if l_e_offset {
-                    let _ = writer.write_u8(0x00)?;
+                    writer.write_u8(0x00)?;
                 }
 
                 if max_len == MAX_RESPONSE_LEN_EXTENDED {
-                    let _ = writer.write_u16::<BigEndian>(0x0000)?;
+                    writer.write_u16::<BigEndian>(0x0000)?;
                 } else {
-                    let _ = writer.write_u16::<BigEndian>(max_len as u16)?;
+                    writer.write_u16::<BigEndian>(max_len as u16)?;
                 }
             }
 
@@ -601,8 +601,8 @@ pub mod apdu {
                 status,
             } = self;
 
-            if let Some(mut data) = data {
-                let _ = writer.write_all(&mut data[..])?;
+            if let Some(data) = data {
+                writer.write_all(&data[..])?;
             }
 
             Ok(writer.write_u16::<BigEndian>(status)?)
@@ -652,7 +652,7 @@ pub fn attestation_cert_length(asn1: &[u8]) -> Result<usize, Error> {
         len = len * 256 + (asn1[(2 + i) as usize] as usize);
     }
 
-    len = len + (following_bytes as usize);
+    len += following_bytes as usize;
 
     Ok(len + 2) // Add type + len bytes
 }

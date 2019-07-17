@@ -93,8 +93,7 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
         control,
         challenge,
         application,
-        key_h_len: _,
-        key_handle: _,
+        ..
     } = req;
 
     if !user_presence && control == U2F_AUTH_ENFORCE {
@@ -105,7 +104,7 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
 
     match control {
         U2F_AUTH_CHECK_ONLY => {
-            return Err(Error::U2FErrorCode(U2F_SW_CONDITIONS_NOT_SATISFIED));
+            Err(Error::U2FErrorCode(U2F_SW_CONDITIONS_NOT_SATISFIED))
         }
         U2F_AUTH_ENFORCE | U2F_AUTH_DONT_ENFORCE => {
             let rng = rand::SystemRandom::new();
