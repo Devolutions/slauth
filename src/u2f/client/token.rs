@@ -52,7 +52,7 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
 
     registered_pub_key.as_ref().read_exact(&mut user_public_key)?;
 
-    let key_handle_lenght = key_handle.len() as u8;
+    let key_handle_length = key_handle.len() as u8;
 
     let mut tbs_vec = Vec::with_capacity(U2F_REGISTER_MAX_DATA_TBS_SIZE);
 
@@ -75,7 +75,7 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
             RegisterResponse {
                 reserved: U2F_REGISTER_ID,
                 user_public_key,
-                key_handle_lenght,
+                key_handle_length,
                 key_handle: key_handle.clone(),
                 attestation_cert: attestation_cert.to_vec(),
                 signature,

@@ -14,7 +14,7 @@ pub struct RegisterRequest {
 pub struct RegisterResponse {
     pub reserved: u8,
     pub user_public_key: [u8; U2F_EC_POINT_SIZE],
-    pub key_handle_lenght: u8,
+    pub key_handle_length: u8,
     pub key_handle: String,
     pub attestation_cert: Vec<u8>,
     pub signature: Vec<u8>,
@@ -119,9 +119,9 @@ impl Message for RegisterResponse {
             let mut user_public_key = [0u8; 65];
             cursor.read_exact(&mut user_public_key)?;
 
-            let key_handle_lenght = cursor.read_u8()?;
+            let key_handle_length = cursor.read_u8()?;
 
-            let mut key_handle_bytes = vec![0u8; key_handle_lenght as usize];
+            let mut key_handle_bytes = vec![0u8; key_handle_length as usize];
 
             cursor.read_exact(&mut key_handle_bytes[..])?;
 
@@ -141,7 +141,7 @@ impl Message for RegisterResponse {
             Ok(RegisterResponse {
                 reserved,
                 user_public_key,
-                key_handle_lenght,
+                key_handle_length,
                 key_handle,
                 attestation_cert,
                 signature,
@@ -153,7 +153,7 @@ impl Message for RegisterResponse {
         let RegisterResponse {
             reserved,
             user_public_key,
-            key_handle_lenght,
+            key_handle_length,
             key_handle,
             attestation_cert,
             signature,
@@ -163,7 +163,7 @@ impl Message for RegisterResponse {
 
         data.write_u8(reserved)?;
         data.write_all(&user_public_key)?;
-        data.write_u8(key_handle_lenght)?;
+        data.write_u8(key_handle_length)?;
         data.write_all(&key_handle.as_bytes())?;
         data.write_all(&attestation_cert)?;
         data.write_all(&signature)?;
