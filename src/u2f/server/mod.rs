@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ring::signature;
 use sha2::{Digest, Sha256};
-use untrusted::Input;
 use webpki::{ECDSA_P256_SHA256, EndEntityCert};
 
 use crate::u2f::error::Error;
@@ -154,7 +153,7 @@ impl U2fRegisterResponse {
         let client_data: ClientData = serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
 
         // Validate signature
-        let attestation_cert = EndEntityCert::from(Input::from(&raw_u2f_reg.attestation_cert))?;
+        let attestation_cert = EndEntityCert::from(&raw_u2f_reg.attestation_cert)?;
 
         let mut hasher = Sha256::new();
 
@@ -175,7 +174,7 @@ impl U2fRegisterResponse {
             data
         };
 
-        attestation_cert.verify_signature(&ECDSA_P256_SHA256, Input::from(&signature_data), Input::from(&raw_u2f_reg.signature))?;
+        attestation_cert.verify_signature(&ECDSA_P256_SHA256, &signature_data, &raw_u2f_reg.signature)?;
 
         Ok(Registration {
             version: U2F_V2_VERSION_STR.to_string(),
@@ -234,7 +233,9 @@ impl U2fSignResponse {
             data
         };
 
-        signature::verify(&signature::ECDSA_P256_SHA256_ASN1, Input::from(public_key), Input::from(&signature_data), Input::from(&raw_u2f_sign.signature))?;
+        let public_key = signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_ASN1, public_key);
+
+        public_key.verify(signature_data.as_slice(), raw_u2f_sign.signature.as_slice())?;
 
         Ok((raw_u2f_sign.user_presence & 0x01) == 0x01)
 

@@ -46,7 +46,7 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
 
     let key_handle = gen_key_handle(&application, &challenge);
 
-    let registered_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(registered_key_pkcs8_bytes))?;
+    let registered_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, registered_key_pkcs8_bytes)?;
     let registered_pub_key = registered_key_pair.public_key();
     let mut user_public_key = [0u8; U2F_EC_POINT_SIZE];
 
@@ -62,11 +62,9 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
     tbs_vec.extend_from_slice(key_handle.as_bytes());
     tbs_vec.extend_from_slice(&user_public_key);
 
-    let sign_input = untrusted::Input::from(tbs_vec.as_slice());
+    let att_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, attestation_key)?;
 
-    let att_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(attestation_key))?;
-
-    let sig = att_key_pair.sign(&rng, sign_input)?;
+    let sig = att_key_pair.sign(&rng, tbs_vec.as_slice())?;
 
     let signature = sig.as_ref().to_vec();
 
@@ -109,7 +107,7 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
         }
         U2F_AUTH_ENFORCE | U2F_AUTH_DONT_ENFORCE => {
             let rng = rand::SystemRandom::new();
-            let key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, untrusted::Input::from(signing_key.private_key.as_slice()))?;
+            let key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, signing_key.private_key.as_slice())?;
 
             let mut tbs_vec = Vec::with_capacity(U2F_AUTH_MAX_DATA_TBS_SIZE);
             tbs_vec.extend_from_slice(&application);
@@ -117,8 +115,7 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
             tbs_vec.extend_from_slice(&counter.to_be_bytes());
             tbs_vec.extend_from_slice(&challenge);
 
-            let sign_input = untrusted::Input::from(tbs_vec.as_slice());
-            let sig = key_pair.sign(&rng, sign_input)?;
+            let sig = key_pair.sign(&rng, tbs_vec.as_slice())?;
             let signature = sig.as_ref().to_vec();
 
             Ok(AuthenticateResponse {
