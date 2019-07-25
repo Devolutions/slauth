@@ -130,8 +130,8 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
 }
 
 pub struct U2FSToken {
-    pub(crate) store: Box<KeyStore>,
-    pub(crate) presence_validator: Box<PresenceValidator>,
+    pub(crate) store: Box<dyn KeyStore>,
+    pub(crate) presence_validator: Box<dyn PresenceValidator>,
     pub(crate) counter: AtomicU32,
 }
 
