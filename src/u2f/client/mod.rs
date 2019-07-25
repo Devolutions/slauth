@@ -19,14 +19,12 @@ pub mod client {
     impl U2fRequest {
         pub(crate) fn register(&self, origin: String, attestation_cert: &[u8], attestation_key: &[u8]) -> Result<(Response, SigningKey), Error> {
             let U2fRequest {
-                req_type: _,
                 app_id,
-                timeout_seconds: _,
-                request_id: _,
                 data,
+                ..
             } = self;
 
-            let origin = app_id.as_ref().map(|a| a.clone()).unwrap_or_else(|| origin);
+            let origin = app_id.as_ref().cloned().unwrap_or_else(|| origin);
             let mut hasher = Sha256::new();
 
             hasher.input(&origin);
@@ -86,14 +84,12 @@ pub mod client {
 
         pub(crate) fn sign(&self, signing_key: &SigningKey, origin: String, counter: u32, user_presence: bool) -> Result<Response, Error> {
             let U2fRequest {
-                req_type: _,
                 app_id,
-                timeout_seconds: _,
-                request_id: _,
                 data,
+                ..
             } = self;
 
-            let origin = app_id.as_ref().map(|a| a.clone()).unwrap_or_else(|| origin);
+            let origin = app_id.as_ref().cloned().unwrap_or_else(|| origin);
             let mut hasher = Sha256::new();
 
             hasher.input(&origin);
@@ -240,7 +236,7 @@ pub mod client {
             let signing_key = &*signing_key;
             let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(|| String::new());
 
-            let request_id = req.request_id.clone();
+            let request_id = req.request_id;
 
             let web_response = match req.sign(signing_key, default_origin, counter as u32, user_presence) {
                 Ok(response_data) => {
@@ -294,7 +290,7 @@ pub mod client {
 
             let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(|| String::new());
 
-            let request_id = req.request_id.clone();
+            let request_id = req.request_id;
             let mut signing_key = None;
             let web_response = match req.register(default_origin, attestation_cert, attestation_key) {
                 Ok((response_data, s_k)) => {

@@ -3,7 +3,7 @@
 pub const MAX_RESPONSE_LEN_SHORT: usize = 256;
 pub const MAX_RESPONSE_LEN_EXTENDED: usize = 65536;
 
-pub const U2F_V2_VERSION_STR: &'static str = "U2F_V2";
+pub const U2F_V2_VERSION_STR: &str = "U2F_V2";
 
 // From :Common U2F raw message format header - Review Draft
 // 2014-10-08

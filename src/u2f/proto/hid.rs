@@ -8,7 +8,7 @@ pub mod hid_const {
 
     // Frame layout - command- and continuation frames
 
-    pub const CID_BROADCAST: u32 = 0xffffffff; // Broadcast channel id
+    pub const CID_BROADCAST: u32 = 0xffff_ffff; // Broadcast channel id
     pub const CID_BROADCAST_SLICE: [u8;4] = [0xff,0xff,0xff,0xff]; // Broadcast channel id
 
     pub const TYPE_MASK: u8 = 0x80; // Frame type mask
@@ -86,15 +86,15 @@ pub mod hid_type {
         #[inline]
         pub fn frame_type(&self) -> u8 {
             match self.packet {
-                Packet::Init {cmd, bcnth:_, bcntl:_, data:_} => cmd & TYPE_MASK,
-                Packet::Cont {seq, data:_} => seq & TYPE_MASK,
+                Packet::Init {cmd, ..} => cmd & TYPE_MASK,
+                Packet::Cont {seq, ..} => seq & TYPE_MASK,
             }
         }
 
         #[inline]
         pub fn frame_cmd(&self) -> Option<u8> {
             match self.packet {
-                Packet::Init {cmd, bcnth:_, bcntl:_, data:_} => Some(cmd & !TYPE_MASK),
+                Packet::Init {cmd, ..} => Some(cmd & !TYPE_MASK),
                 _ => None,
             }
         }
@@ -102,7 +102,7 @@ pub mod hid_type {
         #[inline]
         pub fn frame_seq(&self) -> Option<u8> {
             match self.packet {
-                Packet::Cont {seq, data:_} => Some(seq & !TYPE_MASK),
+                Packet::Cont {seq, ..} => Some(seq & !TYPE_MASK),
                 _ => None,
             }
         }
@@ -110,7 +110,7 @@ pub mod hid_type {
         #[inline]
         pub fn msg_len(&self) -> Option<u16> {
             match self.packet {
-                Packet::Init {cmd: _, bcnth, bcntl, data:_} => Some(bcnth as u16 * 256 + bcntl as u16),
+                Packet::Init {bcnth, bcntl, ..} => Some(bcnth as u16 * 256 + bcntl as u16),
                 _ => None,
             }
         }

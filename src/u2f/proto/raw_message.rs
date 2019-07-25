@@ -14,7 +14,7 @@ pub struct RegisterRequest {
 pub struct RegisterResponse {
     pub reserved: u8,
     pub user_public_key: [u8; U2F_EC_POINT_SIZE],
-    pub key_handle_lenght: u8,
+    pub key_handle_length: u8,
     pub key_handle: String,
     pub attestation_cert: Vec<u8>,
     pub signature: Vec<u8>,
@@ -119,9 +119,9 @@ impl Message for RegisterResponse {
             let mut user_public_key = [0u8; 65];
             cursor.read_exact(&mut user_public_key)?;
 
-            let key_handle_lenght = cursor.read_u8()?;
+            let key_handle_length = cursor.read_u8()?;
 
-            let mut key_handle_bytes = vec![0u8; key_handle_lenght as usize];
+            let mut key_handle_bytes = vec![0u8; key_handle_length as usize];
 
             cursor.read_exact(&mut key_handle_bytes[..])?;
 
@@ -141,7 +141,7 @@ impl Message for RegisterResponse {
             Ok(RegisterResponse {
                 reserved,
                 user_public_key,
-                key_handle_lenght,
+                key_handle_length,
                 key_handle,
                 attestation_cert,
                 signature,
@@ -153,7 +153,7 @@ impl Message for RegisterResponse {
         let RegisterResponse {
             reserved,
             user_public_key,
-            key_handle_lenght,
+            key_handle_length,
             key_handle,
             attestation_cert,
             signature,
@@ -163,7 +163,7 @@ impl Message for RegisterResponse {
 
         data.write_u8(reserved)?;
         data.write_all(&user_public_key)?;
-        data.write_u8(key_handle_lenght)?;
+        data.write_u8(key_handle_length)?;
         data.write_all(&key_handle.as_bytes())?;
         data.write_all(&attestation_cert)?;
         data.write_all(&signature)?;
@@ -504,29 +504,29 @@ pub mod apdu {
                 max_rsp_len
             } = self;
 
-            let _ = writer.write_u8(class_byte)?;
-            let _ = writer.write_u8(command_mode)?;
-            let _ = writer.write_u8(param_1)?;
-            let _ = writer.write_u8(param_2)?;
+            writer.write_u8(class_byte)?;
+            writer.write_u8(command_mode)?;
+            writer.write_u8(param_1)?;
+            writer.write_u8(param_2)?;
 
             let mut l_e_offset = true;
 
-            if let Some((data_len, mut data)) = data_len.and_then(|l| data.and_then(move |d| Some((l, d)))) {
+            if let Some((data_len, data)) = data_len.and_then(|l| data.and_then(move |d| Some((l, d)))) {
                 l_e_offset = false;
-                let _ = writer.write_u8(0x00)?;
-                let _ = writer.write_u16::<BigEndian>(data_len as u16)?;
-                let _ = writer.write_all(&mut data[..])?;
+                writer.write_u8(0x00)?;
+                writer.write_u16::<BigEndian>(data_len as u16)?;
+                writer.write_all(&data[..])?;
             }
 
             if let Some(max_len) = max_rsp_len {
                 if l_e_offset {
-                    let _ = writer.write_u8(0x00)?;
+                    writer.write_u8(0x00)?;
                 }
 
                 if max_len == MAX_RESPONSE_LEN_EXTENDED {
-                    let _ = writer.write_u16::<BigEndian>(0x0000)?;
+                    writer.write_u16::<BigEndian>(0x0000)?;
                 } else {
-                    let _ = writer.write_u16::<BigEndian>(max_len as u16)?;
+                    writer.write_u16::<BigEndian>(max_len as u16)?;
                 }
             }
 
@@ -601,8 +601,8 @@ pub mod apdu {
                 status,
             } = self;
 
-            if let Some(mut data) = data {
-                let _ = writer.write_all(&mut data[..])?;
+            if let Some(data) = data {
+                writer.write_all(&data[..])?;
             }
 
             Ok(writer.write_u16::<BigEndian>(status)?)
@@ -652,7 +652,7 @@ pub fn attestation_cert_length(asn1: &[u8]) -> Result<usize, Error> {
         len = len * 256 + (asn1[(2 + i) as usize] as usize);
     }
 
-    len = len + (following_bytes as usize);
+    len += following_bytes as usize;
 
     Ok(len + 2) // Add type + len bytes
 }
