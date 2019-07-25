@@ -356,6 +356,7 @@ pub mod apdu {
         fn get_frame_size(&self) -> usize;
     }
 
+    #[derive(Clone)]
     pub struct Request {
         pub class_byte: u8,
         pub command_mode: u8,
@@ -559,6 +560,7 @@ pub mod apdu {
         }
     }
 
+    #[derive(Clone)]
     pub struct Response {
         pub data: Option<Vec<u8>>,
         pub status: u16,
