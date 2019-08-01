@@ -130,9 +130,11 @@ impl Message for RegisterResponse {
             let mut attestation_cert = vec![0u8; data_len - cursor.position() as usize];
             cursor.read_exact(&mut attestation_cert[..])?;
 
-            let cert_len = attestation_cert_length(&attestation_cert[0..ASN1_MAX_FOLLOWING_LEN_BYTES + 2])?;
+            let read_len_max = if attestation_cert.len() < (ASN1_MAX_FOLLOWING_LEN_BYTES + 2) {attestation_cert.len()} else {ASN1_MAX_FOLLOWING_LEN_BYTES + 2};
 
-            if cert_len > U2F_MAX_ATT_CERT_SIZE {
+            let cert_len = attestation_cert_length(&attestation_cert[0..read_len_max])?;
+
+            if cert_len > U2F_MAX_ATT_CERT_SIZE || cert_len > attestation_cert.len() {
                 return Err(Error::MalformedApdu);
             }
 
@@ -580,6 +582,9 @@ pub mod apdu {
             Self: Sized {
             let slice_len = slice.len();
 
+            if slice_len < 2 {
+                return Err(Error::MalformedApdu);
+            }
 
             let rsp_data = &slice[0..slice_len - 2];
 
@@ -649,9 +654,16 @@ pub fn attestation_cert_length(asn1: &[u8]) -> Result<usize, Error> {
         return Err(Error::AsnFormatError("Invalid ans len, expected definite long".to_string()));
     }
 
+    if following_bytes as usize + 2 >= asn1.len() {
+        return Err(Error::AsnFormatError("Invalid ans len, too many following len bytes expected".to_string()));
+    }
+
     let mut len: usize = 0;
-    for i in 0..following_bytes {
-        len = len * 256 + (asn1[(2 + i) as usize] as usize);
+    for i in 0..following_bytes as usize {
+        len = len * 256 + (asn1[2 + i] as usize);
+        if len > U2F_MAX_ATT_CERT_SIZE {
+            return Err(Error::Other("Attestation certificate don't meet len requirements".to_string()))
+        }
     }
 
     len += following_bytes as usize;
