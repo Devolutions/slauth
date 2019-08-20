@@ -1,0 +1,2 @@
+pub const WEBAUTHN_CHALLENGE_LENGTH: usize = 32;
+pub const WEBAUTHN_CREDENTIAL_ID_LENGTH: usize = 16;

@@ -10,6 +10,8 @@ pub mod oath;
 #[cfg(feature = "u2f")]
 pub mod u2f;
 
+pub mod webauthn;
+
 #[cfg(feature = "native-bindings")]
 pub mod strings {
     use std::ffi::{
