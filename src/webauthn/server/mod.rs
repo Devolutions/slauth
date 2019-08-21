@@ -1,10 +1,11 @@
-use crate::webauthn::proto::web_message::PublicKeyCredentialCreationOptions;
-use crate::webauthn::proto::constants::{WEBAUTHN_CHALLENGE_LENGTH, WEBAUTHN_CREDENTIAL_ID_LENGTH};
+use crate::webauthn::proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, PublicKeyCredentialParameters, PublicKeyCredentialType, AuthenticatorSelectionCriteria, UserVerificationRequirement, AttestationConveyancePreference};
+use crate::webauthn::proto::constants::{WEBAUTHN_CHALLENGE_LENGTH, WEBAUTHN_CREDENTIAL_ID_LENGTH, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_ES256};
+use crate::webauthn::error::Error;
 
 pub struct CredentialCreationBuilder {
-    pub challenge: Option<[u8; WEBAUTHN_CHALLENGE_LENGTH]>,
-    pub user: Option<User>,
-    pub rp: Option<Rp>,
+    challenge: Option<[u8; WEBAUTHN_CHALLENGE_LENGTH]>,
+    user: Option<User>,
+    rp: Option<Rp>,
 }
 
 impl CredentialCreationBuilder {
@@ -38,8 +39,40 @@ impl CredentialCreationBuilder {
         self
     }
 
-    pub fn build () -> Result<PublicKeyCredentialCreationOptions, Error> {
-
+    pub fn build (self) -> Result<PublicKeyCredentialCreationOptions, Error> {
+        let challenge = self.challenge.ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
+        
+        let user = self.user.map(|user| PublicKeyCredentialUserEntity {
+            id: user.id,
+            name: user.name,
+            display_name: user.display_name,
+            icon: user.icon,
+        }).ok_or_else(Error::Other("Unable to build a WebAuthn request without a user".to_string()))?;
+        
+        let rp = self.rp.map(|rp| PublicKeyCredentialRpEntity {
+            id: None,
+            name: rp.name,
+            icon: rp.icon,
+        }).ok_or_else(Error::Other("Unable to build a WebAuthn request without a relying party".to_string()))?;
+        
+        Ok(PublicKeyCredentialCreationOptions {
+            rp,
+            user,
+            challenge,
+            pub_key_cred_params: vec![PublicKeyCredentialParameters {
+                auth_type: PublicKeyCredentialType::PublicKey,
+                alg: WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_ES256
+            }],
+            timeout: None,
+            exclude_credentials: vec![],
+            authenticator_selection: Some(AuthenticatorSelectionCriteria {
+                authenticator_attachment: None,
+                require_resident_key: None,
+                user_verification: Some(UserVerificationRequirement::Preferred)
+            }),
+            attestation: Some(AttestationConveyancePreference::Direct),
+            extensions: None
+        })
     }
 }
 
