@@ -1,13 +1,12 @@
 use serde_derive::*;
 use serde_json::Value;
-use crate::webauthn::proto::constants::{WEBAUTHN_CHALLENGE_LENGTH, WEBAUTHN_CREDENTIAL_ID_LENGTH};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename = "publicKey", rename_all = "camelCase")]
 pub struct PublicKeyCredentialCreationOptions {
     pub rp: PublicKeyCredentialRpEntity,
     pub user: PublicKeyCredentialUserEntity,
-    pub challenge: [u8; WEBAUTHN_CHALLENGE_LENGTH],
+    pub challenge: String,
     pub pub_key_cred_params: Vec<PublicKeyCredentialParameters>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
@@ -22,8 +21,20 @@ pub struct PublicKeyCredentialCreationOptions {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename = "publicKey")]
-pub struct PublicKeyCredentialRequestOptions {}
+#[serde(rename = "publicKey", rename_all = "camelCase")]
+pub struct PublicKeyCredentialRequestOptions {
+    pub challenge: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rp_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub allow_credentials: Vec<PublicKeyCredentialDescriptor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<Value>,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PublicKeyCredentialRpEntity {
@@ -37,7 +48,7 @@ pub struct PublicKeyCredentialRpEntity {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialUserEntity {
-    pub id: [u8; WEBAUTHN_CREDENTIAL_ID_LENGTH],
+    pub id: String,
     pub name: String,
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,8 +66,9 @@ pub struct PublicKeyCredentialParameters {
 pub struct PublicKeyCredentialDescriptor {
     #[serde(rename = "type")]
     pub cred_type: PublicKeyCredentialType,
-    pub id: [u8; WEBAUTHN_CREDENTIAL_ID_LENGTH],
-    pub transports: Vec<AuthenticatorTransport>,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transports: Option<Vec<AuthenticatorTransport>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -89,8 +101,8 @@ pub struct AuthenticatorSelectionCriteria {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub enum AuthenticatorAttachment {
-    #[serde(rename = "platform")]
     Platform,
     #[serde(rename = "cross-platform")]
     CrossPlatform,
@@ -110,4 +122,43 @@ pub enum AttestationConveyancePreference {
     None,
     Indirect,
     Direct,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicKeyCredential {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<AuthenticatorAttestationResponse>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthenticatorAttestationResponse  {
+    pub attestation_object: String,
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectedClientData {
+    #[serde(rename = "type")]
+    client_type: String,
+    challenge: String,
+    origin: String,
+    token_binding: Option<TokenBinding>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TokenBinding {
+    status: TokenBindingStatus,
+    id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum TokenBindingStatus {
+    Present,
+    Supported,
 }
