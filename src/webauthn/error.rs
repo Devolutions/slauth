@@ -4,6 +4,7 @@ use std::error::Error as StdError;
 use serde_cbor::Error as CborError;
 use serde_json::Error as JsonError;
 use base64::DecodeError;
+use webpki::Error as WebPkiError;
 
 #[derive(Debug)]
 pub enum Error {
@@ -11,6 +12,7 @@ pub enum Error {
     Base64Error(DecodeError),
     CborError(CborError),
     JsonError(JsonError),
+    WebPkiError(WebPkiError),
     Version,
     Registration(String),
     Sign(String),
@@ -35,6 +37,12 @@ impl From<JsonError> for Error {
     }
 }
 
+impl From<WebPkiError> for Error {
+    fn from(e: WebPkiError) -> Self {
+        Error::WebPkiError(e)
+    }
+}
+
 impl StdError for Error {}
 
 impl Display for Error {
@@ -48,7 +56,8 @@ impl Display for Error {
             Other(s) => write!(f, "{}", s),
             Base64Error(e) =>  e.fmt(f),
             CborError(cb_e) => cb_e.fmt(f),
-            JsonError(cb_e) => cb_e.fmt(f),
+            JsonError(js_e) => js_e.fmt(f),
+            WebPkiError(wp_e) => wp_e.fmt(f),
         }
     }
 }

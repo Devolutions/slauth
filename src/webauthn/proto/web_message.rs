@@ -128,8 +128,10 @@ pub enum AttestationConveyancePreference {
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredential {
     pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<AuthenticatorAttestationResponse>,
+    #[serde(rename = "response", skip_serializing_if = "Option::is_none")]
+    pub reg_response: Option<AuthenticatorAttestationResponse>,
+    #[serde(rename = "response", skip_serializing_if = "Option::is_none")]
+    pub sign_response: Option<AuthenticatorAssertionResponse>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -142,18 +144,26 @@ pub struct AuthenticatorAttestationResponse  {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct AuthenticatorAssertionResponse  {
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String,
+
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CollectedClientData {
     #[serde(rename = "type")]
-    client_type: String,
-    challenge: String,
-    origin: String,
-    token_binding: Option<TokenBinding>,
+    pub request_type: String,
+    pub challenge: String,
+    pub origin: String,
+    pub token_binding: Option<TokenBinding>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TokenBinding {
-    status: TokenBindingStatus,
-    id: Option<String>,
+    pub status: TokenBindingStatus,
+    pub id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -4,39 +4,122 @@ use serde_cbor::Value;
 use std::io::{Cursor, Read};
 use byteorder::{ReadBytesExt, BigEndian};
 use bytes::Buf;
+use std::collections::BTreeMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RawAttestationObject {
     auth_data: serde_cbor::Value,
     fmt: String,
-    att_stmt: serde_cbor::Value,
+    att_stmt: AttestationStatement,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AttestationObject {
     pub auth_data: AuthenticatorData,
-    fmt: String,
-    att_stmt: serde_cbor::Value,
+    pub raw_auth_data: Vec<u8>,
+    pub fmt: String,
+    pub att_stmt: AttestationStatement,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AttestationStatement {
+    pub alg: i64,
+    #[serde(with = "serde_bytes")]
+    pub sig: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x5c: Option<serde_cbor::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ecdaa_key_id: Option<serde_cbor::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorData {
-    rp_id_hash: [u8; 32],
-    flags: u8,
-    sign_count: u32,
-    attested_credential_data: AttestedCredentialData,
-    extensions: serde_cbor::Value
+    pub rp_id_hash: [u8; 32],
+    pub flags: u8,
+    pub sign_count: u32,
+    pub attested_credential_data: AttestedCredentialData,
+    pub extensions: serde_cbor::Value
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AttestedCredentialData {
-    aaguid: [u8; 16],
-    credential_id: Vec<u8>,
-    credential_public_key: serde_cbor::Value,
+    pub aaguid: [u8; 16],
+    pub credential_id: Vec<u8>,
+    pub credential_public_key: CredentialPublicKey,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CredentialPublicKey {
+    pub key_type: i64,
+    pub alg: i64,
+    pub curve: i64,
+    pub x: [u8; 32],
+    pub y: [u8; 32],
+}
+
+impl CredentialPublicKey {
+    pub fn from_value(value: serde_cbor::Value) -> Result<Self, Error> {
+        let map = match value {
+            Value::Map(m) => m,
+            _ => { BTreeMap::new() },
+        };
+
+        let key_type = map.get(&Value::Integer(1)).map(|val| {
+            match val {
+                Value::Integer(i) => *i as i64,
+                _ => 0i64,
+            }
+        }).ok_or(Error::Other("Key type missing".to_string()))?;
+
+        let alg = map.get(&Value::Integer(3)).map(|val| {
+            match val {
+                Value::Integer(i) => *i as i64,
+                _ => 0i64,
+            }
+        }).ok_or(Error::Other("algorithm missing".to_string()))?;
+
+        let curve = map.get(&Value::Integer(-1)).map(|val| {
+            match val {
+                Value::Integer(i) => *i as i64,
+                _ => 0i64,
+            }
+        }).ok_or(Error::Other("curve missing".to_string()))?;
+
+        let x = map.get(&Value::Integer(-2)).map(|val| {
+            match val {
+                Value::Bytes(i) => {
+                    let mut array = [0u8; 32];
+                    array.copy_from_slice(&i[0..32]);
+                    array
+                },
+                _ => [0u8; 32],
+            }
+        }).ok_or(Error::Other("x coord missing".to_string()))?;
+
+        let y = map.get(&Value::Integer(-3)).map(|val| {
+            match val {
+                Value::Bytes(i) => {
+                    let mut array = [0u8; 32];
+                    array.copy_from_slice(&i[0..32]);
+                    array
+                },
+                _ => [0u8; 32],
+            }
+        }).ok_or(Error::Other("x coord missing".to_string()))?;
+
+        Ok(CredentialPublicKey {
+            key_type,
+            alg,
+            curve,
+            x,
+            y,
+        })
+    }
 }
 
 pub trait Message {
@@ -73,9 +156,13 @@ impl Message for AttestationObject {
         let mut remaining = vec![0u8; cursor.remaining()];
         cursor.read_exact(&mut remaining[..])?;
 
-        let _final_value = dbg!(serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(|e| Error::CborError(e)))?;
+        let remaining_value = serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(|e| Error::CborError(e))?;
 
-        Ok(AttestationObject{
+        let credential_public_key = CredentialPublicKey::from_value(remaining_value)?;
+
+        let raw_auth_data = cursor.into_inner();
+
+        Ok(AttestationObject {
             auth_data: AuthenticatorData {
                 rp_id_hash,
                 flags,
@@ -83,10 +170,11 @@ impl Message for AttestationObject {
                 attested_credential_data: AttestedCredentialData {
                     aaguid,
                     credential_id,
-                    credential_public_key: Value::Null
+                    credential_public_key,
                 },
                 extensions: Value::Null
             },
+            raw_auth_data,
             fmt: value.fmt,
             att_stmt: value.att_stmt
         })
