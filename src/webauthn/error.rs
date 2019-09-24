@@ -5,6 +5,7 @@ use serde_cbor::Error as CborError;
 use serde_json::Error as JsonError;
 use base64::DecodeError;
 use webpki::Error as WebPkiError;
+use ring::error::Unspecified;
 
 #[derive(Debug)]
 pub enum Error {
@@ -13,6 +14,7 @@ pub enum Error {
     CborError(CborError),
     JsonError(JsonError),
     WebPkiError(WebPkiError),
+    RingError(Unspecified),
     Version,
     Registration(String),
     Sign(String),
@@ -43,6 +45,13 @@ impl From<WebPkiError> for Error {
     }
 }
 
+impl From<Unspecified> for Error {
+    fn from(e: Unspecified) -> Self {
+        Error::RingError(e)
+    }
+}
+
+
 impl StdError for Error {}
 
 impl Display for Error {
@@ -58,6 +67,7 @@ impl Display for Error {
             CborError(cb_e) => cb_e.fmt(f),
             JsonError(js_e) => js_e.fmt(f),
             WebPkiError(wp_e) => wp_e.fmt(f),
+            RingError(r_e) => r_e.fmt(f),
         }
     }
 }

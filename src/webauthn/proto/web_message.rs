@@ -71,6 +71,12 @@ pub struct PublicKeyCredentialDescriptor {
     pub transports: Option<Vec<AuthenticatorTransport>>,
 }
 
+impl PartialEq for PublicKeyCredentialDescriptor {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum PublicKeyCredentialType {
     #[serde(rename = "public-key")]
@@ -128,26 +134,23 @@ pub enum AttestationConveyancePreference {
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredential {
     pub id: String,
-    #[serde(rename = "response", skip_serializing_if = "Option::is_none")]
-    pub reg_response: Option<AuthenticatorAttestationResponse>,
-    #[serde(rename = "response", skip_serializing_if = "Option::is_none")]
-    pub sign_response: Option<AuthenticatorAssertionResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<AuthenticatorAttestationResponse>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorAttestationResponse  {
-    pub attestation_object: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_object: Option<String>,
     #[serde(rename = "clientDataJSON")]
     pub client_data_json: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct AuthenticatorAssertionResponse  {
-    #[serde(rename = "clientDataJSON")]
-    pub client_data_json: String,
-
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticator_data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_handle: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

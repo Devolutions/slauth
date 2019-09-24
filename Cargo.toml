@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.3.2"
+version = "0.4.0"
 authors = ["richer <richer.arc@gmail.com>"]
 edition = "2018"
 description = "oath HOTP and TOTP complient implementation"
@@ -23,6 +23,7 @@ default = ["u2f-server", "native-bindings"]
 native-bindings = []
 u2f-server = ["u2f", "webpki"]
 u2f = ["base64", "byteorder", "ring", "untrusted", "serde", "serde_repr", "serde_derive", "serde_json", "serde_bytes"]
+webauthn-server = [ "u2f-server", "bytes"]
 
 [dependencies]
 sha2 = "0.8.0"

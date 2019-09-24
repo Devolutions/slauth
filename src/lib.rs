@@ -1,4 +1,4 @@
-//#![deny(warnings)]
+#![deny(warnings)]
 
 //! # Slauth
 //!
@@ -10,6 +10,7 @@ pub mod oath;
 #[cfg(feature = "u2f")]
 pub mod u2f;
 
+#[cfg(feature = "webauthn")]
 pub mod webauthn;
 
 #[cfg(feature = "native-bindings")]

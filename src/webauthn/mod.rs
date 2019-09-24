@@ -2,6 +2,7 @@ use crate::webauthn::proto::raw_message::CredentialPublicKey;
 use std::collections::HashMap;
 use crate::webauthn::proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions};
 use crate::webauthn::server::{CredentialCreationVerifier, CredentialRequestVerifier};
+use crate::webauthn::error::Error::Sign;
 
 pub mod proto;
 pub mod server;
@@ -48,7 +49,7 @@ pub fn web_test() {
     }
 
     struct TestControllerContext {
-        creds: RwLock<HashMap<String, CredentialPublicKey>>,
+        creds: RwLock<HashMap<String, (CredentialPublicKey, u32)>>,
         reg_contexts: RwLock<HashMap<String, PublicKeyCredentialCreationOptions>>,
         sign_contexts: RwLock<HashMap<String, PublicKeyCredentialRequestOptions>>,
     }
@@ -92,11 +93,11 @@ pub fn web_test() {
         pub fn complete_register(&self, req: &SyncRequest, _res: &mut SyncResponse) {
             let value = serde_json::from_str::<PublicKeyCredential>(&String::from_utf8(req.body().clone()).unwrap());
             let uuid = base64::encode_config(Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(), base64::URL_SAFE_NO_PAD);
-            if let Ok(cred) = dbg!(value) {
+            if let Ok(cred) = value {
                 if let Some(context) = self.reg_contexts.read().expect("should be ok").get(&uuid) {
                     let mut verifier = CredentialCreationVerifier::new(cred.clone(), context.clone(), "http://localhost");
-                    if let Ok(cred_pub_key) = verifier.verify() {
-                        self.creds.write().unwrap().insert(cred.id, cred_pub_key);
+                    if let Ok((cred_pub_key, sign_count)) = verifier.verify() {
+                        self.creds.write().unwrap().insert(cred.id, (cred_pub_key, sign_count));
                     }
                 }
             }
@@ -105,7 +106,7 @@ pub fn web_test() {
         pub fn sign_request(&self, _req: &SyncRequest, res: &mut SyncResponse) {
             let mut builder = CredentialRequestBuilder::new().rp("localhost".to_string()).challenge(gen_challenge(WEBAUTHN_CHALLENGE_LENGTH));
             let uuid = base64::encode_config(Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(), base64::URL_SAFE_NO_PAD);
-            for (cred, key) in self.creds.read().unwrap().iter() {
+            for (cred, _) in self.creds.read().unwrap().iter() {
                 builder = builder.allow_credential(cred.clone());
             }
             match builder.build() {
@@ -119,15 +120,32 @@ pub fn web_test() {
             }
         }
 
-        pub fn complete_sign(&self, req: &SyncRequest, _res: &mut SyncResponse) {
+        pub fn complete_sign(&self, req: &SyncRequest, res: &mut SyncResponse) {
             let value = serde_json::from_str::<PublicKeyCredential>(&String::from_utf8(req.body().clone()).unwrap());
             let uuid = base64::encode_config(Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(), base64::URL_SAFE_NO_PAD);
-            if let Ok(cred) = dbg!(value) {
+            let result = if let Ok(cred) = value {
                 if let Some(context) = self.sign_contexts.read().expect("should be ok").get(&uuid) {
-                    let mut verifier = CredentialRequestVerifier::new(cred.clone(), context.clone(), "http://localhost");
-                    if verifier.verify().is_ok() {
+                    if let Some((cred_pub, sign_count)) = self.creds.read().unwrap().get(&cred.id) {
+                        let mut verifier = CredentialRequestVerifier::new(cred.clone(), cred_pub.clone(), context.clone(), "http://localhost", uuid.clone(), sign_count.clone());
+                        match verifier.verify() {
+                            Ok(sign_count) => Ok((cred_pub.clone(), sign_count)),
 
-                    }
+                            Err(e) => Err(e)
+                        }
+                    } else { Err(Sign("Credential not found".to_string())) }
+                } else { Err(Sign("Context not found".to_string())) }
+            } else {
+                Err(Sign("Public key credential could not be parsed".to_string()))
+            };
+
+            match result {
+                Ok((cred_pub, sign_count)) => {
+                    self.creds.write().unwrap().insert(uuid, (cred_pub.clone(), sign_count));
+                    res.status(200).body("it works".to_string());
+                },
+
+                Err(e) => {
+                    res.status(500).body(e.to_string());
                 }
             }
         }

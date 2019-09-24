@@ -5,6 +5,7 @@ use std::io::{Cursor, Read};
 use byteorder::{ReadBytesExt, BigEndian};
 use bytes::Buf;
 use std::collections::BTreeMap;
+use crate::webauthn::proto::constants::{ECDSA_Y_PREFIX_POSITIVTE, ECDSA_Y_PREFIX_NEGATIVE};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -41,8 +42,52 @@ pub struct AuthenticatorData {
     pub rp_id_hash: [u8; 32],
     pub flags: u8,
     pub sign_count: u32,
-    pub attested_credential_data: AttestedCredentialData,
+    pub attested_credential_data: Option<AttestedCredentialData>,
     pub extensions: serde_cbor::Value
+}
+
+impl AuthenticatorData {
+    pub fn from_vec(data: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
+        let mut cursor = Cursor::new(data);
+
+        let mut rp_id_hash = [0u8; 32];
+        cursor.read_exact(&mut rp_id_hash)?;
+
+        let flags = cursor.read_u8()?;
+
+        let sign_count = cursor.read_u32::<BigEndian>()?;
+
+        let attested_credential_data = if cursor.remaining() > 16 {
+            let mut aaguid = [0u8; 16];
+            cursor.read_exact(&mut aaguid)?;
+
+            let length = cursor.read_u16::<BigEndian>()?;
+
+            let mut credential_id = vec![0u8; length as usize];
+            cursor.read_exact(&mut credential_id[..])?;
+
+            let mut remaining = vec![0u8; cursor.remaining()];
+            cursor.read_exact(&mut remaining[..])?;
+
+            let remaining_value = serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(|e| Error::CborError(e))?;
+
+            let credential_public_key = CredentialPublicKey::from_value(remaining_value)?;
+
+            Some(AttestedCredentialData {
+                aaguid,
+                credential_id,
+                credential_public_key,
+            })
+        } else { None };
+
+        Ok((AuthenticatorData {
+            rp_id_hash,
+            flags,
+            sign_count,
+            attested_credential_data,
+            extensions: Value::Null
+        }, cursor.into_inner()))
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -58,8 +103,7 @@ pub struct CredentialPublicKey {
     pub key_type: i64,
     pub alg: i64,
     pub curve: i64,
-    pub x: [u8; 32],
-    pub y: [u8; 32],
+    pub coords: Coordinates,
 }
 
 impl CredentialPublicKey {
@@ -90,37 +134,44 @@ impl CredentialPublicKey {
             }
         }).ok_or(Error::Other("curve missing".to_string()))?;
 
-        let x = map.get(&Value::Integer(-2)).map(|val| {
+        let x = map.get(&Value::Integer(-2)).and_then(|val| {
             match val {
                 Value::Bytes(i) => {
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&i[0..32]);
-                    array
+                    Some(array)
                 },
-                _ => [0u8; 32],
+                _ => None,
             }
-        }).ok_or(Error::Other("x coord missing".to_string()))?;
 
-        let y = map.get(&Value::Integer(-3)).map(|val| {
+        }).ok_or(Error::Other("x coordinate missing".to_string()))?;
+
+        let coords = map.get(&Value::Integer(-3)).and_then(|val| {
             match val {
                 Value::Bytes(i) => {
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&i[0..32]);
-                    array
+                    Some(Coordinates::Uncompressed { x, y: array, })
                 },
-                _ => [0u8; 32],
+
+                Value::Bool(b) => {
+                    Some(Coordinates::Compressed { x, y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVTE } })
+                }
+                _ => None,
             }
-        }).ok_or(Error::Other("x coord missing".to_string()))?;
+
+        }).ok_or(Error::Other("y coordinate missing".to_string()))?;
 
         Ok(CredentialPublicKey {
             key_type,
             alg,
             curve,
-            x,
-            y,
+            coords,
         })
     }
 }
+
+
 
 pub trait Message {
     fn from_base64(string: &String) -> Result<Self, Error> where Self: Sized;
@@ -131,52 +182,24 @@ impl Message for AttestationObject {
         let raw_values = base64::decode(string)?;
         let value = serde_cbor::from_slice::<RawAttestationObject>(raw_values.as_slice()).map_err(|e| Error::CborError(e))?;
 
-        let auth_data = match value.auth_data {
+        let data = match value.auth_data {
             Value::Bytes(vec) => Ok(vec),
             _ => Err(Error::Other("Cannot proceed without auth data".to_string()))
         }?;
 
-        let mut cursor = Cursor::new(auth_data);
-
-        let mut rp_id_hash = [0u8; 32];
-        cursor.read_exact(&mut rp_id_hash)?;
-
-        let flags = cursor.read_u8()?;
-
-        let sign_count = cursor.read_u32::<BigEndian>()?;
-
-        let mut aaguid = [0u8; 16];
-        cursor.read_exact(&mut aaguid)?;
-
-        let length = cursor.read_u16::<BigEndian>()?;
-
-        let mut credential_id = vec![0u8; length as usize];
-        cursor.read_exact(&mut credential_id[..])?;
-
-        let mut remaining = vec![0u8; cursor.remaining()];
-        cursor.read_exact(&mut remaining[..])?;
-
-        let remaining_value = serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(|e| Error::CborError(e))?;
-
-        let credential_public_key = CredentialPublicKey::from_value(remaining_value)?;
-
-        let raw_auth_data = cursor.into_inner();
+        let (auth_data, raw_auth_data) = AuthenticatorData::from_vec(data)?;
 
         Ok(AttestationObject {
-            auth_data: AuthenticatorData {
-                rp_id_hash,
-                flags,
-                sign_count,
-                attested_credential_data: AttestedCredentialData {
-                    aaguid,
-                    credential_id,
-                    credential_public_key,
-                },
-                extensions: Value::Null
-            },
+            auth_data,
             raw_auth_data,
             fmt: value.fmt,
             att_stmt: value.att_stmt
         })
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Coordinates {
+    Compressed { x: [u8; 32], y: u8 },
+    Uncompressed { x: [u8; 32], y: [u8; 32] },
 }
