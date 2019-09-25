@@ -12,6 +12,9 @@ pub const WEBAUTHN_FORMAT_FIDO_U2F: &str = "fido-u2f";
 
 pub const WEBAUTH_PUBLIC_KEY_TYPE_EC2: i64 = 2;
 
+pub const WEBAUTHN_REQUEST_TYPE_CREATE: &str = "webauthn.create";
+pub const WEBAUTHN_REQUEST_TYPE_GET: &str = "webauthn.get";
+
 pub const ECDSA_Y_PREFIX_POSITIVTE: u8 = 2;
 pub const ECDSA_Y_PREFIX_NEGATIVE: u8 = 3;
 pub const ECDSA_Y_PREFIX_UNCOMPRESSED: u8 = 4;

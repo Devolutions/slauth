@@ -1,5 +1,5 @@
 use crate::webauthn::proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, PublicKeyCredentialParameters, PublicKeyCredentialType, AuthenticatorSelectionCriteria, UserVerificationRequirement, AttestationConveyancePreference, PublicKeyCredentialRequestOptions, PublicKeyCredentialDescriptor, PublicKeyCredential, CollectedClientData};
-use crate::webauthn::proto::constants::{WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTH_PUBLIC_KEY_TYPE_EC2, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, ECDSA_CURVE_P256, ECDSA_CURVE_P384};
+use crate::webauthn::proto::constants::{WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTH_PUBLIC_KEY_TYPE_EC2, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, ECDSA_CURVE_P256, ECDSA_CURVE_P384, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET};
 use crate::webauthn::error::Error;
 use crate::webauthn::proto::raw_message::{AttestationObject, Message, CredentialPublicKey, AuthenticatorData, Coordinates};
 use sha2::{Sha256, Digest};
@@ -127,15 +127,15 @@ impl CredentialCreationVerifier {
     }
 
     pub fn verify(&mut self) -> Result<(CredentialPublicKey, u32), Error> {
-        let response = self.credential.response.clone().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
+        let response = self.credential.response.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
         let client_data_json = base64::decode(&response.client_data_json)?;
         let client_data = serde_json::from_slice::<CollectedClientData>(client_data_json.as_slice())?;
 
-        let raw_attestation = &response.attestation_object.ok_or_else(|| Error::Other("attestation object must be present for verification".to_string()))?;
+        let raw_attestation = response.attestation_object.as_ref().ok_or_else(|| Error::Other("attestation object must be present for verification".to_string()))?;
         let attestation = AttestationObject::from_base64(raw_attestation)?;
 
-        if client_data.request_type != "webauthn.create" {
+        if client_data.request_type != WEBAUTHN_REQUEST_TYPE_CREATE {
             return Err(Error::Registration("Wrong request type".to_string()));
         }
 
@@ -191,19 +191,19 @@ impl CredentialCreationVerifier {
                                 }
                             },
 
-                            _ => {}
+                            _ => { return Err(Error::Registration("Certificate is missing".to_string())); }
                         }
                     }
-                    _ => {}
+                    _ => { return Err(Error::Registration("Ecdaaa certificate is not supported".to_string())); }
                 }
             }
 
             WEBAUTHN_FORMAT_FIDO_U2F => {
-                //unimplemented
+                return Err(Error::Registration("Fido u2f attestion format is not supported".to_string()));
             }
 
             _ => {
-                //unimplemented
+                return Err(Error::Registration("attestion format is not supported".to_string()));
             }
         }
 
@@ -289,13 +289,13 @@ pub struct CredentialRequestVerifier {
 }
 
 impl CredentialRequestVerifier {
-    pub fn new(credential: PublicKeyCredential, credential_pub: CredentialPublicKey, context: PublicKeyCredentialRequestOptions, origin: &str, user_handle: String, sign_count: u32) -> Self {
+    pub fn new(credential: PublicKeyCredential, credential_pub: CredentialPublicKey, context: PublicKeyCredentialRequestOptions, origin: &str, user_handle: &str, sign_count: u32) -> Self {
         CredentialRequestVerifier {
             credential,
             credential_pub,
             context,
             origin: origin.to_string(),
-            user_handle,
+            user_handle: user_handle.to_string(),
             sign_count,
         }
     }
@@ -328,7 +328,7 @@ impl CredentialRequestVerifier {
             }
         }
 
-        if client_data.request_type != "webauthn.get" {
+        if client_data.request_type != WEBAUTHN_REQUEST_TYPE_GET {
             return Err(Error::Sign("Request type must be webauthn.get".to_string()));
         }
 
