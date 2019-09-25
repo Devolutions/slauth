@@ -20,3 +20,7 @@ members = ["."]
 [[bin]]
 name = "fuzz_messages"
 path = "fuzz_targets/fuzz_messages.rs"
+
+[[bin]]
+name = "fuzz_webauthn_messages"
+path = "fuzz_targets/fuzz_webauthn_messages.rs"
