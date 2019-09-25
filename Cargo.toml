@@ -1,14 +1,14 @@
 [package]
 name = "slauth"
 version = "0.4.0"
-authors = ["richer <richer.arc@gmail.com>"]
+authors = ["richer <richer.arc@gmail.com>", "LucFauvel <luc.fauvel@hotmail.com>"]
 edition = "2018"
 description = "oath HOTP and TOTP complient implementation"
 documentation = "https://docs.rs/slauth"
 homepage = "https://github.com/devolutions/slauth"
 repository = "https://github.com/devolutions/slauth"
 readme = "README.md"
-keywords = ["TOTP", "HOTP", "2FA", "MFA"]
+keywords = ["TOTP", "HOTP", "2FA", "MFA", "WebAuthn"]
 license = "MIT"
 
 [target.'cfg(target_os="android")'.dependencies]
