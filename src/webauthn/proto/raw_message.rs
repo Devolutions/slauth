@@ -175,12 +175,17 @@ impl CredentialPublicKey {
 
 pub trait Message {
     fn from_base64(string: &String) -> Result<Self, Error> where Self: Sized;
+    fn from_bytes(raw_values: &[u8]) -> Result<Self, Error> where Self: Sized;
 }
 
 impl Message for AttestationObject {
     fn from_base64(string: &String) -> Result<Self, Error> where Self: Sized {
         let raw_values = base64::decode(string)?;
-        let value = serde_cbor::from_slice::<RawAttestationObject>(raw_values.as_slice()).map_err(|e| Error::CborError(e))?;
+        Self::from_bytes(raw_values.as_slice())
+    }
+
+    fn from_bytes(raw_values: &[u8]) -> Result<Self, Error> where Self: Sized {
+        let value = serde_cbor::from_slice::<RawAttestationObject>(raw_values).map_err(|e| Error::CborError(e))?;
 
         let data = match value.auth_data {
             Value::Bytes(vec) => Ok(vec),
