@@ -7,7 +7,6 @@ pub struct PublicKeyCredentialCreationOptions {
     pub rp: PublicKeyCredentialRpEntity,
     pub user: PublicKeyCredentialUserEntity,
     pub challenge: String,
-    #[serde(default)]
     pub pub_key_cred_params: Vec<PublicKeyCredentialParameters>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u64>,
