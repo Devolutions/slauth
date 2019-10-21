@@ -5,7 +5,8 @@ use std::io::{Cursor, Read};
 use byteorder::{ReadBytesExt, BigEndian};
 use bytes::Buf;
 use std::collections::BTreeMap;
-use crate::webauthn::proto::constants::{ECDSA_Y_PREFIX_POSITIVTE, ECDSA_Y_PREFIX_NEGATIVE};
+use crate::webauthn::proto::constants::{ECDSA_Y_PREFIX_POSITIVTE, ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_UNCOMPRESSED};
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +44,7 @@ pub struct AuthenticatorData {
     pub flags: u8,
     pub sign_count: u32,
     pub attested_credential_data: Option<AttestedCredentialData>,
-    pub extensions: serde_cbor::Value
+    pub extensions: serde_cbor::Value,
 }
 
 impl AuthenticatorData {
@@ -85,7 +86,7 @@ impl AuthenticatorData {
             flags,
             sign_count,
             attested_credential_data,
-            extensions: Value::Null
+            extensions: Value::Null,
         }, cursor.into_inner()))
     }
 }
@@ -110,7 +111,7 @@ impl CredentialPublicKey {
     pub fn from_value(value: serde_cbor::Value) -> Result<Self, Error> {
         let map = match value {
             Value::Map(m) => m,
-            _ => { BTreeMap::new() },
+            _ => { BTreeMap::new() }
         };
 
         let key_type = map.get(&Value::Integer(1)).map(|val| {
@@ -140,10 +141,9 @@ impl CredentialPublicKey {
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&i[0..32]);
                     Some(array)
-                },
+                }
                 _ => None,
             }
-
         }).ok_or(Error::Other("x coordinate missing".to_string()))?;
 
         let coords = map.get(&Value::Integer(-3)).and_then(|val| {
@@ -151,15 +151,14 @@ impl CredentialPublicKey {
                 Value::Bytes(i) => {
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&i[0..32]);
-                    Some(Coordinates::Uncompressed { x, y: array, })
-                },
+                    Some(Coordinates::Uncompressed { x, y: array })
+                }
 
                 Value::Bool(b) => {
                     Some(Coordinates::Compressed { x, y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVTE } })
                 }
                 _ => None,
             }
-
         }).ok_or(Error::Other("y coordinate missing".to_string()))?;
 
         Ok(CredentialPublicKey {
@@ -170,7 +169,6 @@ impl CredentialPublicKey {
         })
     }
 }
-
 
 
 pub trait Message {
@@ -198,7 +196,7 @@ impl Message for AttestationObject {
             auth_data,
             raw_auth_data,
             fmt: value.fmt,
-            att_stmt: value.att_stmt
+            att_stmt: value.att_stmt,
         })
     }
 }
@@ -207,4 +205,71 @@ impl Message for AttestationObject {
 pub enum Coordinates {
     Compressed { x: [u8; 32], y: u8 },
     Uncompressed { x: [u8; 32], y: [u8; 32] },
+}
+
+impl ToString for Coordinates {
+    fn to_string(&self) -> String {
+        let mut key = Vec::new();
+        match self {
+            Coordinates::Compressed { x, y } => {
+                key.push(y.clone());
+                key.append(&mut x.to_vec());
+            }
+
+            Coordinates::Uncompressed { x, y } => {
+                key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
+                key.append(&mut x.to_vec());
+                key.append(&mut y.to_vec());
+            }
+        }
+
+        base64::encode_config(&key, base64::URL_SAFE_NO_PAD)
+    }
+}
+
+impl FromStr for Coordinates {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let key = base64::decode(s).map_err(|e| Error::Base64Error(e))?;
+        match key[0] {
+            ECDSA_Y_PREFIX_UNCOMPRESSED => {
+                if key.len() == 65 {
+                    let mut x = [0u8; 32];
+                    let mut y = [0u8; 32];
+
+                    x.copy_from_slice(&key[1..32]);
+                    y.copy_from_slice(&key[33..65]);
+
+                    Ok(Coordinates::Uncompressed { x, y })
+                } else {
+                    Err(Error::Other("Key is wrong length".to_string()))
+                }
+            }
+
+            ECDSA_Y_PREFIX_POSITIVTE => {
+                if key.len() == 33 {
+                    let mut x = [0u8; 32];
+                    x.copy_from_slice(&key[1..32]);
+
+                    Ok(Coordinates::Compressed { x, y: ECDSA_Y_PREFIX_POSITIVTE })
+                } else {
+                    Err(Error::Other("Key is wrong length".to_string()))
+                }
+            }
+
+            ECDSA_Y_PREFIX_NEGATIVE => {
+                if key.len() == 33 {
+                    let mut x = [0u8; 32];
+                    x.copy_from_slice(&key[1..32]);
+
+                    Ok(Coordinates::Compressed { x, y: ECDSA_Y_PREFIX_NEGATIVE })
+                } else {
+                    Err(Error::Other("Key is wrong length".to_string()))
+                }
+            }
+
+            _ => Err(Error::Other("Key prefix missing".to_string()))
+        }
+    }
 }
