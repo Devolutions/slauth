@@ -231,7 +231,8 @@ impl FromStr for Coordinates {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let key = base64::decode(s).map_err(|e| Error::Base64Error(e))?;
+        let key = base64::decode_config(s, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Base64Error(e))?;
+
         match key[0] {
             ECDSA_Y_PREFIX_UNCOMPRESSED => {
                 if key.len() == 65 {
