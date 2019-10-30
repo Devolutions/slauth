@@ -239,7 +239,7 @@ impl FromStr for Coordinates {
                     let mut x = [0u8; 32];
                     let mut y = [0u8; 32];
 
-                    x.copy_from_slice(&key[1..32]);
+                    x.copy_from_slice(&key[1..33]);
                     y.copy_from_slice(&key[33..65]);
 
                     Ok(Coordinates::Uncompressed { x, y })
