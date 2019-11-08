@@ -5,7 +5,16 @@ use std::io::{Cursor, Read};
 use byteorder::{ReadBytesExt, BigEndian};
 use bytes::Buf;
 use std::collections::BTreeMap;
-use crate::webauthn::proto::constants::{ECDSA_Y_PREFIX_POSITIVTE, ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_UNCOMPRESSED};
+use crate::webauthn::proto::constants::{
+    ECDSA_Y_PREFIX_POSITIVTE,
+    ECDSA_Y_PREFIX_NEGATIVE,
+    ECDSA_Y_PREFIX_UNCOMPRESSED,
+    WEBAUTHN_FORMAT_PACKED,
+    WEBAUTHN_FORMAT_FIDO_U2F,
+    WEBAUTHN_FORMAT_TPM,
+    WEBAUTHN_FORMAT_ANDROID_KEY,
+    WEBAUTHN_FORMAT_ANDROID_SAFETYNET
+};
 use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -13,7 +22,7 @@ use std::str::FromStr;
 pub struct RawAttestationObject {
     auth_data: serde_cbor::Value,
     fmt: String,
-    att_stmt: AttestationStatement,
+    att_stmt: serde_cbor::Value,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -22,12 +31,12 @@ pub struct AttestationObject {
     pub auth_data: AuthenticatorData,
     pub raw_auth_data: Vec<u8>,
     pub fmt: String,
-    pub att_stmt: AttestationStatement,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub att_stmt: Option<AttestationStatement>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct AttestationStatement {
+pub struct Packed {
     pub alg: i64,
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
@@ -35,6 +44,52 @@ pub struct AttestationStatement {
     pub x5c: Option<serde_cbor::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ecdaa_key_id: Option<serde_cbor::Value>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TPM {
+    pub alg: i64,
+    #[serde(with = "serde_bytes")]
+    pub sig: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x5c: Option<serde_cbor::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ecdaa_key_id: Option<serde_cbor::Value>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FidoU2F {
+    #[serde(with = "serde_bytes")]
+    pub sig: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x5c: Option<serde_cbor::Value>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AndroidKey {
+    pub alg: i64,
+    #[serde(with = "serde_bytes")]
+    pub sig: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x5c: Option<serde_cbor::Value>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AndroidSafetynet {
+    pub ver: String,
+    #[serde(with = "serde_bytes")]
+    pub response: Vec<u8>
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged, rename_all = "camelCase")]
+pub enum AttestationStatement {
+    Packed(Packed),
+    TPM(TPM),
+    FidoU2F(FidoU2F),
+    AndroidKey(AndroidKey),
+    AndroidSafetynet(AndroidSafetynet),
+    None,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -190,13 +245,37 @@ impl Message for AttestationObject {
             _ => Err(Error::Other("Cannot proceed without auth data".to_string()))
         }?;
 
+        let att_stmt = match value.fmt.as_str() {
+            WEBAUTHN_FORMAT_PACKED => {
+                serde_cbor::value::from_value::<Packed>(value.att_stmt).ok().map(|packed| AttestationStatement::Packed(packed))
+            }
+
+            WEBAUTHN_FORMAT_FIDO_U2F => {
+                serde_cbor::value::from_value::<FidoU2F>(value.att_stmt).ok().map(|fido_u2f| AttestationStatement::FidoU2F(fido_u2f))
+            }
+
+            WEBAUTHN_FORMAT_TPM => {
+                serde_cbor::value::from_value::<TPM>(value.att_stmt).ok().map(|tpm| AttestationStatement::TPM(tpm))
+            }
+
+            WEBAUTHN_FORMAT_ANDROID_KEY => {
+                serde_cbor::value::from_value::<AndroidKey>(value.att_stmt).ok().map(|android_key| AttestationStatement::AndroidKey(android_key))
+            }
+
+            WEBAUTHN_FORMAT_ANDROID_SAFETYNET => {
+                serde_cbor::value::from_value::<AndroidSafetynet>(value.att_stmt).ok().map(|android_safetynet| AttestationStatement::AndroidSafetynet(android_safetynet))
+            }
+
+            _ => None,
+        };
+
         let (auth_data, raw_auth_data) = AuthenticatorData::from_vec(data)?;
 
         Ok(AttestationObject {
             auth_data,
             raw_auth_data,
             fmt: value.fmt,
-            att_stmt: value.att_stmt,
+            att_stmt,
         })
     }
 }
