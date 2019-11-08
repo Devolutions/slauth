@@ -1,7 +1,7 @@
 use crate::webauthn::proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, PublicKeyCredentialParameters, PublicKeyCredentialType, AuthenticatorSelectionCriteria, UserVerificationRequirement, AttestationConveyancePreference, PublicKeyCredentialRequestOptions, PublicKeyCredentialDescriptor, PublicKeyCredential, CollectedClientData};
-use crate::webauthn::proto::constants::{WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTH_PUBLIC_KEY_TYPE_EC2, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, ECDSA_CURVE_P256, ECDSA_CURVE_P384, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET};
+use crate::webauthn::proto::constants::{WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, ECDSA_CURVE_P256, ECDSA_CURVE_P384, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET};
 use crate::webauthn::error::Error;
-use crate::webauthn::proto::raw_message::{AttestationObject, Message, CredentialPublicKey, AuthenticatorData, Coordinates};
+use crate::webauthn::proto::raw_message::{AttestationObject, Message, CredentialPublicKey, AuthenticatorData, Coordinates, AttestationStatement};
 use sha2::{Sha256, Digest};
 use webpki::{SignatureAlgorithm, EndEntityCert};
 use ring::signature::UnparsedPublicKey;
@@ -178,18 +178,18 @@ impl CredentialCreationVerifier {
         let mut msg = attestation.raw_auth_data.clone();
         msg.append(&mut client_data_hash);
 
-        match attestation.fmt.as_str() {
-            WEBAUTHN_FORMAT_PACKED => {
-                match attestation.att_stmt.x5c {
+        match attestation.att_stmt {
+            Some(AttestationStatement::Packed(packed)) => {
+                match packed.x5c {
                     Some(serde_cbor::Value::Array(mut cert_arr)) => {
                         match cert_arr.pop() {
                             Some(serde_cbor::Value::Bytes(cert)) => {
                                 self.cert = Some(cert.clone());
                                 let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
-                                if let Err(e) = web_cert.verify_signature(get_alg_from_cose(attestation.att_stmt.alg), msg.as_slice(), attestation.att_stmt.sig.as_slice()) {
+                                if let Err(e) = web_cert.verify_signature(get_alg_from_cose(packed.alg), msg.as_slice(), packed.sig.as_slice()) {
                                     return Err(Error::WebPkiError(e));
                                 }
-                            },
+                            }
 
                             _ => { return Err(Error::Registration("Certificate is missing".to_string())); }
                         }
@@ -198,9 +198,39 @@ impl CredentialCreationVerifier {
                 }
             }
 
-            WEBAUTHN_FORMAT_FIDO_U2F => {
-                return Err(Error::Registration("Fido u2f attestion format is not supported".to_string()));
+            Some(AttestationStatement::FidoU2F(fido_u2f)) => {
+                if let Some(serde_cbor::Value::Array(mut cert_arr)) = fido_u2f.x5c {
+                    match cert_arr.pop() {
+                        Some(serde_cbor::Value::Bytes(cert)) => {
+                            self.cert = Some(cert.clone());
+                            let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
+                            if let Err(e) = web_cert.verify_signature(&webpki::ECDSA_P256_SHA256, msg.as_slice(), fido_u2f.sig.as_slice()) {
+                                return Err(Error::WebPkiError(e));
+                            }
+                        }
+
+                        _ => { return Err(Error::Registration("Certificate is missing".to_string())); }
+                    }
+                }
             }
+
+            Some(AttestationStatement::AndroidKey(android_key)) => {
+                if let Some(serde_cbor::Value::Array(mut cert_arr)) = android_key.x5c {
+                    match cert_arr.pop() {
+                        Some(serde_cbor::Value::Bytes(cert)) => {
+                            self.cert = Some(cert.clone());
+                            let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
+                            if let Err(e) = web_cert.verify_signature(get_alg_from_cose(android_key.alg), msg.as_slice(), android_key.sig.as_slice()) {
+                                return Err(Error::WebPkiError(e));
+                            }
+                        }
+
+                        _ => { return Err(Error::Registration("Certificate is missing".to_string())); }
+                    }
+                }
+            }
+
+            Some(AttestationStatement::None) => {}
 
             _ => {
                 return Err(Error::Registration("attestion format is not supported".to_string()));
@@ -315,7 +345,7 @@ impl CredentialRequestVerifier {
         let descriptor = PublicKeyCredentialDescriptor {
             cred_type: PublicKeyCredentialType::PublicKey,
             id: self.credential.id.clone(),
-            transports: None
+            transports: None,
         };
 
         if !self.context.allow_credentials.contains(&descriptor) {
@@ -373,12 +403,12 @@ impl CredentialRequestVerifier {
 
         let mut key = Vec::new();
         match self.credential_pub.coords {
-            Coordinates::Compressed {x,y} => {
+            Coordinates::Compressed { x, y } => {
                 key.push(y);
                 key.append(&mut x.to_vec());
-            },
+            }
 
-            Coordinates::Uncompressed {x,y} => {
+            Coordinates::Uncompressed { x, y } => {
                 key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
                 key.append(&mut x.to_vec());
                 key.append(&mut y.to_vec());
@@ -390,7 +420,7 @@ impl CredentialRequestVerifier {
         public_key.verify(msg.as_slice(), signature.as_slice()).map_err(|_| Error::Sign("Invalid public key or signature".to_string()))?;
 
         if auth_data.sign_count < self.sign_count {
-            return Err(Error::Sign("Sign count is inconsistent, might be a cloned key".to_string()))
+            return Err(Error::Sign("Sign count is inconsistent, might be a cloned key".to_string()));
         }
 
         Ok(auth_data.sign_count)
@@ -400,8 +430,8 @@ impl CredentialRequestVerifier {
 fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn VerificationAlgorithm, Error> {
     if id == WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2 {
         match curve {
-            ECDSA_CURVE_P256=> Ok(&signature::ECDSA_P256_SHA256_ASN1),
-            ECDSA_CURVE_P384=> Ok(&signature::ECDSA_P384_SHA384_ASN1),
+            ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
+            ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
             _ => Err(Error::Sign("Unsupported algorithm".to_string())),
         }
     } else {

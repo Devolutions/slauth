@@ -9,6 +9,10 @@ pub const WEBAUTHN_USER_VERIFIED_FLAG: u8 = 00000100;
 
 pub const WEBAUTHN_FORMAT_PACKED: &str = "packed";
 pub const WEBAUTHN_FORMAT_FIDO_U2F: &str = "fido-u2f";
+pub const WEBAUTHN_FORMAT_NONE: &str = "none";
+pub const WEBAUTHN_FORMAT_ANDROID_SAFETYNET: &str = "android-safetynet";
+pub const WEBAUTHN_FORMAT_ANDROID_KEY: &str = "android-key";
+pub const WEBAUTHN_FORMAT_TPM: &str = "tpm";
 
 pub const WEBAUTH_PUBLIC_KEY_TYPE_EC2: i64 = 2;
 
