@@ -1,12 +1,13 @@
-use crate::webauthn::proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, PublicKeyCredentialParameters, PublicKeyCredentialType, AuthenticatorSelectionCriteria, UserVerificationRequirement, AttestationConveyancePreference, PublicKeyCredentialRequestOptions, PublicKeyCredentialDescriptor, PublicKeyCredential, CollectedClientData};
-use crate::webauthn::proto::constants::{WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, ECDSA_CURVE_P256, ECDSA_CURVE_P384, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET};
-use crate::webauthn::error::Error;
-use crate::webauthn::proto::raw_message::{AttestationObject, Message, CredentialPublicKey, AuthenticatorData, Coordinates, AttestationStatement};
-use sha2::{Sha256, Digest};
-use webpki::{SignatureAlgorithm, EndEntityCert};
+use ring::signature;
 use ring::signature::UnparsedPublicKey;
 use ring::signature::VerificationAlgorithm;
-use ring::signature;
+use sha2::{Digest, Sha256};
+use webpki::{EndEntityCert, SignatureAlgorithm};
+
+use crate::webauthn::error::Error;
+use crate::webauthn::proto::constants::{ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG};
+use crate::webauthn::proto::raw_message::{AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CredentialPublicKey, Message};
+use crate::webauthn::proto::web_message::{AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity, UserVerificationRequirement};
 
 pub struct CredentialCreationBuilder {
     challenge: Option<String>,
@@ -175,8 +176,11 @@ impl CredentialCreationVerifier {
             }
         }
 
-        let mut msg = attestation.raw_auth_data.clone();
-        msg.append(&mut client_data_hash);
+        let attested_credential_data = attestation.auth_data.attested_credential_data.ok_or_else(|| Error::Registration("Missing attested credential data".to_string()))?;
+
+        if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
+            return Err(Error::Registration("wrong key type".to_string()));
+        }
 
         match attestation.att_stmt {
             Some(AttestationStatement::Packed(packed)) => {
@@ -184,6 +188,9 @@ impl CredentialCreationVerifier {
                     Some(serde_cbor::Value::Array(mut cert_arr)) => {
                         match cert_arr.pop() {
                             Some(serde_cbor::Value::Bytes(cert)) => {
+                                let mut msg = attestation.raw_auth_data.clone();
+                                msg.append(&mut client_data_hash);
+
                                 self.cert = Some(cert.clone());
                                 let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
                                 if let Err(e) = web_cert.verify_signature(get_alg_from_cose(packed.alg), msg.as_slice(), packed.sig.as_slice()) {
@@ -202,6 +209,14 @@ impl CredentialCreationVerifier {
                 if let Some(serde_cbor::Value::Array(mut cert_arr)) = fido_u2f.x5c {
                     match cert_arr.pop() {
                         Some(serde_cbor::Value::Bytes(cert)) => {
+                            let mut public_key_u2f = attested_credential_data.credential_public_key.coords.to_vec().clone();
+                            let mut msg = Vec::new();
+                            msg.push(0x00);
+                            msg.append(&mut attestation.auth_data.rp_id_hash.to_vec());
+                            msg.append(&mut client_data_hash);
+                            msg.append(&mut attested_credential_data.credential_id.clone());
+                            msg.append(&mut public_key_u2f);
+
                             self.cert = Some(cert.clone());
                             let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
                             if let Err(e) = web_cert.verify_signature(&webpki::ECDSA_P256_SHA256, msg.as_slice(), fido_u2f.sig.as_slice()) {
@@ -218,6 +233,9 @@ impl CredentialCreationVerifier {
                 if let Some(serde_cbor::Value::Array(mut cert_arr)) = android_key.x5c {
                     match cert_arr.pop() {
                         Some(serde_cbor::Value::Bytes(cert)) => {
+                            let mut msg = attestation.raw_auth_data.clone();
+                            msg.append(&mut client_data_hash);
+
                             self.cert = Some(cert.clone());
                             let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
                             if let Err(e) = web_cert.verify_signature(get_alg_from_cose(android_key.alg), msg.as_slice(), android_key.sig.as_slice()) {
@@ -235,12 +253,6 @@ impl CredentialCreationVerifier {
             _ => {
                 return Err(Error::Registration("attestion format is not supported".to_string()));
             }
-        }
-
-        let attested_credential_data = attestation.auth_data.attested_credential_data.ok_or_else(|| Error::Registration("".to_string()))?;
-
-        if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
-            return Err(Error::Registration("wrong key type".to_string()));
         }
 
         Ok((attested_credential_data.credential_public_key, attestation.auth_data.sign_count))
