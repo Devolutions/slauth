@@ -286,6 +286,26 @@ pub enum Coordinates {
     Uncompressed { x: [u8; 32], y: [u8; 32] },
 }
 
+impl Coordinates {
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut key = Vec::new();
+        match self {
+            Coordinates::Compressed { x, y } => {
+                key.push(y.clone());
+                key.append(&mut x.to_vec());
+            }
+
+            Coordinates::Uncompressed { x, y } => {
+                key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
+                key.append(&mut x.to_vec());
+                key.append(&mut y.to_vec());
+            }
+        }
+
+        key
+    }
+}
+
 impl ToString for Coordinates {
     fn to_string(&self) -> String {
         let mut key = Vec::new();
