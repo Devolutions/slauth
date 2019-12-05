@@ -6,7 +6,7 @@ use byteorder::{ReadBytesExt, BigEndian};
 use bytes::Buf;
 use std::collections::BTreeMap;
 use crate::webauthn::proto::constants::{
-    ECDSA_Y_PREFIX_POSITIVTE,
+    ECDSA_Y_PREFIX_POSITIVE,
     ECDSA_Y_PREFIX_NEGATIVE,
     ECDSA_Y_PREFIX_UNCOMPRESSED,
     WEBAUTHN_FORMAT_PACKED,
@@ -210,7 +210,7 @@ impl CredentialPublicKey {
                 }
 
                 Value::Bool(b) => {
-                    Some(Coordinates::Compressed { x, y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVTE } })
+                    Some(Coordinates::Compressed { x, y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVE } })
                 }
                 _ => None,
             }
@@ -347,12 +347,12 @@ impl FromStr for Coordinates {
                 }
             }
 
-            ECDSA_Y_PREFIX_POSITIVTE => {
+            ECDSA_Y_PREFIX_POSITIVE => {
                 if key.len() == 33 {
                     let mut x = [0u8; 32];
                     x.copy_from_slice(&key[1..32]);
 
-                    Ok(Coordinates::Compressed { x, y: ECDSA_Y_PREFIX_POSITIVTE })
+                    Ok(Coordinates::Compressed { x, y: ECDSA_Y_PREFIX_POSITIVE })
                 } else {
                     Err(Error::Other("Key is wrong length".to_string()))
                 }
