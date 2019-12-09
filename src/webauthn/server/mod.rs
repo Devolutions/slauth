@@ -303,11 +303,7 @@ impl CredentialRequestBuilder {
             timeout: None,
             rp_id: self.rp,
             allow_credentials,
-            authenticator_selection: Some(AuthenticatorSelectionCriteria {
-                authenticator_attachment: None,
-                require_resident_key: None,
-                user_verification: Some(UserVerificationRequirement::Preferred),
-            }),
+            user_verification: Some(UserVerificationRequirement::Preferred),
             extensions: None,
         })
     }
@@ -392,7 +388,7 @@ impl CredentialRequestVerifier {
             return Err(Error::Sign("Missing user present flag".to_string()));
         }
 
-        if let Some(Some(user_verification)) = self.context.authenticator_selection.as_ref().map(|auth_select| auth_select.user_verification.as_ref()) {
+        if let Some(user_verification) = self.context.user_verification.as_ref() {
             match user_verification {
                 UserVerificationRequirement::Required => if (auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) == 0 {
                     return Err(Error::Sign("Missing user verified flag".to_string()));
