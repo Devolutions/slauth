@@ -31,7 +31,7 @@ pub struct PublicKeyCredentialRequestOptions {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub allow_credentials: Vec<PublicKeyCredentialDescriptor>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
+    pub user_verification: Option<UserVerificationRequirement>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<Value>,
 }
