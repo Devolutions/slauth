@@ -13,6 +13,7 @@ pub struct CredentialCreationBuilder {
     challenge: Option<String>,
     user: Option<User>,
     rp: Option<Rp>,
+    user_verification_requirement: Option<UserVerificationRequirement>,
 }
 
 impl CredentialCreationBuilder {
@@ -21,6 +22,7 @@ impl CredentialCreationBuilder {
             challenge: None,
             user: None,
             rp: None,
+            user_verification_requirement: None,
         }
     }
 
@@ -49,6 +51,11 @@ impl CredentialCreationBuilder {
                 id,
             }
         );
+        self
+    }
+
+    pub fn user_verification_requirement<T: Into<Option<UserVerificationRequirement>>>(mut self, uvr: T) -> Self {
+        self.user_verification_requirement = uvr.into();
         self
     }
 
@@ -81,7 +88,7 @@ impl CredentialCreationBuilder {
             authenticator_selection: Some(AuthenticatorSelectionCriteria {
                 authenticator_attachment: None,
                 require_resident_key: None,
-                user_verification: Some(UserVerificationRequirement::Preferred),
+                user_verification: self.user_verification_requirement,
             }),
             attestation: Some(AttestationConveyancePreference::Direct),
             extensions: None,
@@ -263,6 +270,7 @@ pub struct CredentialRequestBuilder {
     challenge: Option<String>,
     rp: Option<String>,
     allow_credentials: Vec<String>,
+    user_verification_requirement: Option<UserVerificationRequirement>,
 }
 
 impl CredentialRequestBuilder {
@@ -271,6 +279,7 @@ impl CredentialRequestBuilder {
             challenge: None,
             rp: None,
             allow_credentials: Vec::new(),
+            user_verification_requirement: None,
         }
     }
 
@@ -289,6 +298,11 @@ impl CredentialRequestBuilder {
         self
     }
 
+    pub fn user_verification_requirement<T: Into<Option<UserVerificationRequirement>>>(mut self, uvr: T) -> Self {
+        self.user_verification_requirement = uvr.into();
+        self
+    }
+
     pub fn build(self) -> Result<PublicKeyCredentialRequestOptions, Error> {
         let challenge = self.challenge.ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
         let mut allow_credentials = Vec::new();
@@ -303,7 +317,7 @@ impl CredentialRequestBuilder {
             timeout: None,
             rp_id: self.rp,
             allow_credentials,
-            user_verification: Some(UserVerificationRequirement::Preferred),
+            user_verification: self.user_verification_requirement,
             extensions: None,
         })
     }
