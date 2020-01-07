@@ -13,7 +13,7 @@ pub struct CredentialCreationBuilder {
     challenge: Option<String>,
     user: Option<User>,
     rp: Option<Rp>,
-    user_verification_requirement: UserVerificationRequirement,
+    user_verification_requirement: Option<UserVerificationRequirement>,
 }
 
 impl CredentialCreationBuilder {
@@ -22,7 +22,7 @@ impl CredentialCreationBuilder {
             challenge: None,
             user: None,
             rp: None,
-            user_verification_requirement: UserVerificationRequirement::Preferred,
+            user_verification_requirement: None,
         }
     }
 
@@ -54,8 +54,8 @@ impl CredentialCreationBuilder {
         self
     }
 
-    pub fn user_verification_requirement(mut self, uvr: UserVerificationRequirement) -> Self {
-        self.user_verification_requirement = uvr;
+    pub fn user_verification_requirement<T: Into<Option<UserVerificationRequirement>>>(mut self, uvr: T) -> Self {
+        self.user_verification_requirement = uvr.into();
         self
     }
 
@@ -88,7 +88,7 @@ impl CredentialCreationBuilder {
             authenticator_selection: Some(AuthenticatorSelectionCriteria {
                 authenticator_attachment: None,
                 require_resident_key: None,
-                user_verification: Some(self.user_verification_requirement),
+                user_verification: self.user_verification_requirement,
             }),
             attestation: Some(AttestationConveyancePreference::Direct),
             extensions: None,
@@ -270,7 +270,7 @@ pub struct CredentialRequestBuilder {
     challenge: Option<String>,
     rp: Option<String>,
     allow_credentials: Vec<String>,
-    user_verification_requirement: UserVerificationRequirement,
+    user_verification_requirement: Option<UserVerificationRequirement>,
 }
 
 impl CredentialRequestBuilder {
@@ -279,7 +279,7 @@ impl CredentialRequestBuilder {
             challenge: None,
             rp: None,
             allow_credentials: Vec::new(),
-            user_verification_requirement: UserVerificationRequirement::Preferred,
+            user_verification_requirement: None,
         }
     }
 
@@ -298,8 +298,8 @@ impl CredentialRequestBuilder {
         self
     }
 
-    pub fn user_verification_requirement(mut self, uvr: UserVerificationRequirement) -> Self {
-        self.user_verification_requirement = uvr;
+    pub fn user_verification_requirement<T: Into<Option<UserVerificationRequirement>>>(mut self, uvr: T) -> Self {
+        self.user_verification_requirement = uvr.into();
         self
     }
 
@@ -317,7 +317,7 @@ impl CredentialRequestBuilder {
             timeout: None,
             rp_id: self.rp,
             allow_credentials,
-            user_verification: Some(self.user_verification_requirement),
+            user_verification: self.user_verification_requirement,
             extensions: None,
         })
     }
