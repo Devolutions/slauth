@@ -75,18 +75,18 @@ impl Display for CredentialError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         use CredentialError::*;
         match self {
-            RequestType=> write!(f, "Wrong request type"),
-            Challenge=> write!(f, "Challenges do not match"),
-            Origin=> write!(f, "Wrong origin"),
-            Rp=> write!(f, "Wrong rp ID"),
-            UserPresentFlag=> write!(f, "Missing user present flag"),
-            UserVerifiedFlag=> write!(f, "Missing user verified flag"),
-            Extensions=> write!(f, "Extensions should not be present"),
-            KeyType=> write!(f, "wrong key type"),
-            CertificateMissing=> write!(f, "Certificate is missing"),
-            CertificateNotSupported=> write!(f, "Ecdaaa certificate is not supported"),
-            AttestationMissing=> write!(f, "Missing attested credential data"),
-            AttestationNotSupported=> write!(f, "Attestation format is not supported"),
+            RequestType => write!(f, "Wrong request type"),
+            Challenge => write!(f, "Challenges do not match"),
+            Origin => write!(f, "Wrong origin"),
+            Rp => write!(f, "Wrong rp ID"),
+            UserPresentFlag => write!(f, "Missing user present flag"),
+            UserVerifiedFlag => write!(f, "Missing user verified flag"),
+            Extensions => write!(f, "Extensions should not be present"),
+            KeyType => write!(f, "wrong key type"),
+            CertificateMissing => write!(f, "Certificate is missing"),
+            CertificateNotSupported => write!(f, "Ecdaaa certificate is not supported"),
+            AttestationMissing => write!(f, "Missing attested credential data"),
+            AttestationNotSupported => write!(f, "Attestation format is not supported"),
             Other(s) => write!(f, "{}", s)
         }
     }
