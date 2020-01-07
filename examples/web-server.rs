@@ -10,7 +10,7 @@ pub fn main() {
         use slauth::webauthn::server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier};
         use slauth::webauthn::proto::constants::WEBAUTHN_CHALLENGE_LENGTH;
         use std::str::FromStr;
-        use slauth::webauthn::error::Error::Sign;
+        use slauth::webauthn::error::Error::CredentialError;
         use serde_json::json;
 
         let server = Server::builder();
@@ -126,10 +126,10 @@ pub fn main() {
 
                                 Err(e) => Err(e)
                             }
-                        } else { Err(Sign("Credential not found".to_string())) }
-                    } else { Err(Sign("Context not found".to_string())) }
+                        } else { Err(CredentialError(CredentialError::Other("Credential not found".to_string()))) }
+                    } else { Err(CredentialError(CredentialError::Other("Context not found".to_string()))) }
                 } else {
-                    Err(Sign("Public key credential could not be parsed".to_string()))
+                    Err(CredentialError(CredentialError::Other("Public key credential could not be parsed".to_string())))
                 };
 
                 match result {

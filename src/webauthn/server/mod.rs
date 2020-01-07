@@ -144,15 +144,15 @@ impl CredentialCreationVerifier {
         let attestation = AttestationObject::from_base64(raw_attestation)?;
 
         if client_data.request_type != WEBAUTHN_REQUEST_TYPE_CREATE {
-            return Err(Error::Registration(CredentialError::RequestType));
+            return Err(Error::CredentialError(CredentialError::RequestType));
         }
 
         if client_data.challenge != self.context.challenge {
-            return Err(Error::Registration(CredentialError::Challenge));
+            return Err(Error::CredentialError(CredentialError::Challenge));
         }
 
         if client_data.origin != self.origin {
-            return Err(Error::Registration(CredentialError::Origin));
+            return Err(Error::CredentialError(CredentialError::Origin));
         }
 
         let mut hasher = Sha256::new();
@@ -161,17 +161,17 @@ impl CredentialCreationVerifier {
 
         hasher.input(self.context.rp.id.as_ref().unwrap_or(&self.origin));
         if attestation.auth_data.rp_id_hash != hasher.result().as_slice() {
-            return Err(Error::Registration(CredentialError::Rp));
+            return Err(Error::CredentialError(CredentialError::Rp));
         }
 
         if (attestation.auth_data.flags & WEBAUTHN_USER_PRESENT_FLAG) == 0 {
-            return Err(Error::Registration(CredentialError::UserPresentFlag));
+            return Err(Error::CredentialError(CredentialError::UserPresentFlag));
         }
 
         if let Some(Some(user_verification)) = self.context.authenticator_selection.as_ref().map(|auth_select| auth_select.user_verification.as_ref()) {
             match user_verification {
                 UserVerificationRequirement::Required => if (attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) == 0 {
-                    return Err(Error::Registration(CredentialError::UserVerifiedFlag));
+                    return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
                 }
                 _ => {}
             }
@@ -179,14 +179,14 @@ impl CredentialCreationVerifier {
 
         if let Some(extensions) = &self.context.extensions {
             if !extensions.is_null() {
-                return Err(Error::Registration(CredentialError::Extensions));
+                return Err(Error::CredentialError(CredentialError::Extensions));
             }
         }
 
-        let attested_credential_data = attestation.auth_data.attested_credential_data.ok_or_else(|| Error::Registration(CredentialError::AttestationMissing))?;
+        let attested_credential_data = attestation.auth_data.attested_credential_data.ok_or_else(|| Error::CredentialError(CredentialError::AttestationMissing))?;
 
         if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
-            return Err(Error::Registration(CredentialError::KeyType));
+            return Err(Error::CredentialError(CredentialError::KeyType));
         }
 
         match attestation.att_stmt {
@@ -205,10 +205,10 @@ impl CredentialCreationVerifier {
                                 }
                             }
 
-                            _ => { return Err(Error::Registration(CredentialError::CertificateNotSupported)); }
+                            _ => { return Err(Error::CredentialError(CredentialError::CertificateNotSupported)); }
                         }
                     }
-                    _ => { return Err(Error::Registration(CredentialError::CertificateNotSupported)); }
+                    _ => { return Err(Error::CredentialError(CredentialError::CertificateNotSupported)); }
                 }
             }
 
@@ -231,7 +231,7 @@ impl CredentialCreationVerifier {
                             }
                         }
 
-                        _ => { return Err(Error::Registration(CredentialError::CertificateMissing)); }
+                        _ => { return Err(Error::CredentialError(CredentialError::CertificateMissing)); }
                     }
                 }
             }
@@ -250,7 +250,7 @@ impl CredentialCreationVerifier {
                             }
                         }
 
-                        _ => { return Err(Error::Registration(CredentialError::CertificateMissing)); }
+                        _ => { return Err(Error::CredentialError(CredentialError::CertificateMissing)); }
                     }
                 }
             }
@@ -258,7 +258,7 @@ impl CredentialCreationVerifier {
             Some(AttestationStatement::None) => {}
 
             _ => {
-                return Err(Error::Registration(CredentialError::AttestationNotSupported));
+                return Err(Error::CredentialError(CredentialError::AttestationNotSupported));
             }
         }
 
@@ -371,41 +371,41 @@ impl CredentialRequestVerifier {
         };
 
         if !self.context.allow_credentials.contains(&descriptor) {
-            return Err(Error::Sign(CredentialError::Other(String::from("Specified credential is not allowed"))));
+            return Err(Error::CredentialError(CredentialError::Other(String::from("Specified credential is not allowed"))));
         }
 
         if let Some(user_handle) = &response.user_handle {
             if *user_handle != self.user_handle {
-                return Err(Error::Sign(CredentialError::Other(String::from("User handles do not match"))));
+                return Err(Error::CredentialError(CredentialError::Other(String::from("User handles do not match"))));
             }
         }
 
         if client_data.request_type != WEBAUTHN_REQUEST_TYPE_GET {
-            return Err(Error::Sign(CredentialError::Other(String::from("Request type must be webauthn.get"))));
+            return Err(Error::CredentialError(CredentialError::Other(String::from("Request type must be webauthn.get"))));
         }
 
         if client_data.challenge != self.context.challenge {
-            return Err(Error::Sign(CredentialError::Challenge));
+            return Err(Error::CredentialError(CredentialError::Challenge));
         }
 
         if client_data.origin != self.origin {
-            return Err(Error::Sign(CredentialError::Origin));
+            return Err(Error::CredentialError(CredentialError::Origin));
         }
 
         let mut hasher = Sha256::new();
         hasher.input(self.context.rp_id.as_ref().unwrap_or(&self.origin));
         if auth_data.rp_id_hash != hasher.result_reset().as_slice() {
-            return Err(Error::Sign(CredentialError::Rp));
+            return Err(Error::CredentialError(CredentialError::Rp));
         }
 
         if (auth_data.flags & WEBAUTHN_USER_PRESENT_FLAG) == 0 {
-            return Err(Error::Sign(CredentialError::UserPresentFlag));
+            return Err(Error::CredentialError(CredentialError::UserPresentFlag));
         }
 
         if let Some(user_verification) = self.context.user_verification.as_ref() {
             match user_verification {
                 UserVerificationRequirement::Required => if (auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) == 0 {
-                    return Err(Error::Sign(CredentialError::UserVerifiedFlag));
+                    return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
                 }
                 _ => {}
             }
@@ -413,7 +413,7 @@ impl CredentialRequestVerifier {
 
         if let Some(extensions) = &self.context.extensions {
             if !extensions.is_null() {
-                return Err(Error::Sign(CredentialError::Extensions));
+                return Err(Error::CredentialError(CredentialError::Extensions));
             }
         }
 
@@ -439,10 +439,10 @@ impl CredentialRequestVerifier {
 
         let signature_alg = get_ring_alg_from_cose(self.credential_pub.alg, self.credential_pub.curve)?;
         let public_key = UnparsedPublicKey::new(signature_alg, key.as_slice());
-        public_key.verify(msg.as_slice(), signature.as_slice()).map_err(|_| Error::Sign(CredentialError::Other(String::from("Invalid public key or signature"))))?;
+        public_key.verify(msg.as_slice(), signature.as_slice()).map_err(|_| Error::CredentialError(CredentialError::Other(String::from("Invalid public key or signature"))))?;
 
         if auth_data.sign_count < self.sign_count {
-            return Err(Error::Sign(CredentialError::Other(String::from("Sign count is inconsistent, might be a cloned key"))));
+            return Err(Error::CredentialError(CredentialError::Other(String::from("Sign count is inconsistent, might be a cloned key"))));
         }
 
         Ok(auth_data.sign_count)
@@ -454,9 +454,9 @@ fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn Verificati
         match curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
-            _ => Err(Error::Sign(CredentialError::Other(String::from("Unsupported algorithm")))),
+            _ => Err(Error::CredentialError(CredentialError::Other(String::from("Unsupported algorithm")))),
         }
     } else {
-        Err(Error::Sign(CredentialError::Other(String::from("Unsupported algorithm"))))
+        Err(Error::CredentialError(CredentialError::Other(String::from("Unsupported algorithm"))))
     }
 }

@@ -33,8 +33,7 @@ pub enum Error {
     WebPkiError(WebPkiError),
     RingError(Unspecified),
     Version,
-    Registration(CredentialError),
-    Sign(CredentialError),
+    CredentialError(CredentialError),
     Other(String),
 }
 
@@ -98,8 +97,7 @@ impl Display for Error {
         match self {
             IoError(io_e) => io_e.fmt(f),
             Version => write!(f, "Unsupported version"),
-            Registration(ce) => ce.fmt(f),
-            Sign(ce) => ce.fmt(f),
+            CredentialError(ce) => ce.fmt(f),
             Other(s) => write!(f, "{}", s),
             Base64Error(e) =>  e.fmt(f),
             CborError(cb_e) => cb_e.fmt(f),
