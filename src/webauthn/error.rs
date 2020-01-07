@@ -8,6 +8,23 @@ use webpki::Error as WebPkiError;
 use ring::error::Unspecified;
 
 #[derive(Debug)]
+pub enum CredentialError {
+    RequestType,
+    Challenge,
+    Origin,
+    Rp,
+    UserPresentFlag,
+    UserVerifiedFlag,
+    Extensions,
+    KeyType,
+    CertificateMissing,
+    CertificateNotSupported,
+    AttestationMissing,
+    AttestationNotSupported,
+    Other(String),
+}
+
+#[derive(Debug)]
 pub enum Error {
     IoError(IoError),
     Base64Error(DecodeError),
@@ -16,8 +33,7 @@ pub enum Error {
     WebPkiError(WebPkiError),
     RingError(Unspecified),
     Version,
-    Registration(String),
-    Sign(String),
+    CredentialError(CredentialError),
     Other(String),
 }
 
@@ -54,14 +70,34 @@ impl From<Unspecified> for Error {
 
 impl StdError for Error {}
 
+impl Display for CredentialError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        use CredentialError::*;
+        match self {
+            RequestType => write!(f, "Wrong request type"),
+            Challenge => write!(f, "Challenges do not match"),
+            Origin => write!(f, "Wrong origin"),
+            Rp => write!(f, "Wrong rp ID"),
+            UserPresentFlag => write!(f, "Missing user present flag"),
+            UserVerifiedFlag => write!(f, "Missing user verified flag"),
+            Extensions => write!(f, "Extensions should not be present"),
+            KeyType => write!(f, "wrong key type"),
+            CertificateMissing => write!(f, "Certificate is missing"),
+            CertificateNotSupported => write!(f, "Ecdaaa certificate is not supported"),
+            AttestationMissing => write!(f, "Missing attested credential data"),
+            AttestationNotSupported => write!(f, "Attestation format is not supported"),
+            Other(s) => write!(f, "{}", s)
+        }
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         use Error::*;
         match self {
             IoError(io_e) => io_e.fmt(f),
             Version => write!(f, "Unsupported version"),
-            Registration(s) => write!(f, "{}", s),
-            Sign(s) => write!(f, "{}", s),
+            CredentialError(ce) => ce.fmt(f),
             Other(s) => write!(f, "{}", s),
             Base64Error(e) =>  e.fmt(f),
             CborError(cb_e) => cb_e.fmt(f),
