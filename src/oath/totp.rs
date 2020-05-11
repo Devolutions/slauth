@@ -359,7 +359,6 @@ fn test_clock_drifting() {
         use std::thread::sleep;
         use std::time::Duration;
         sleep(Duration::from_secs(6));
-        dbg!(&server.clock_drift);
         assert!(server.verify(&client_code));
     }
 }

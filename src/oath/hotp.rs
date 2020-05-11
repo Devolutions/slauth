@@ -178,7 +178,7 @@ impl OtpAuth for HOTPContext {
                         match s_param_it.next() {
                             Some("secret") => {
                                 secret = s_param_it.next().and_then(|s| {
-                                    dbg!(base32::decode(base32::Alphabet::RFC4648 { padding: false }, s))
+                                    base32::decode(base32::Alphabet::RFC4648 { padding: false }, s)
                                 }).ok_or_else(|| { "Otpauth uri is malformed, missing secret value".to_string() })?;
                                 continue;
                             }
