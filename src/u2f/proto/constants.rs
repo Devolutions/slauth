@@ -18,7 +18,7 @@ pub const ASN1_MAX_FOLLOWING_LEN_BYTES: usize = 126;
 // General constants
 
 pub const U2F_EC_KEY_SIZE: usize = 32; // EC key size in bytes
-pub const U2F_EC_POINT_SIZE: usize = ((U2F_EC_KEY_SIZE * 2) + 1); // Size of EC point
+pub const U2F_EC_POINT_SIZE: usize = (U2F_EC_KEY_SIZE * 2) + 1; // Size of EC point
 pub const U2F_MAX_KH_SIZE: usize = 128; // Max size of key handle
 pub const U2F_MAX_ATT_CERT_SIZE: usize = 2048; // Max size of attestation certificate
 pub const U2F_MAX_EC_SIG_SIZE: usize = 72; // Max size of DER coded EC signature

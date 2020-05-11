@@ -29,16 +29,16 @@ pub mod hid_const {
 
     // U2FHID native commands
 
-    pub const U2FHID_PING: u8 = (TYPE_INIT | 0x01); // Echo data through local processor only
-    pub const U2FHID_MSG : u8 = (TYPE_INIT | 0x03); // Send U2F message frame
-    pub const U2FHID_LOCK: u8 = (TYPE_INIT | 0x04); // Send lock channel command
-    pub const U2FHID_INIT: u8 = (TYPE_INIT | 0x06); // Channel initialization
-    pub const U2FHID_WINK: u8 = (TYPE_INIT | 0x08); // Send device identification wink
-    pub const U2FHID_SYNC: u8 = (TYPE_INIT | 0x3c); // Protocol resync command
-    pub const U2FHID_ERROR: u8 = (TYPE_INIT | 0x3f); // Error response
+    pub const U2FHID_PING: u8 = TYPE_INIT | 0x01; // Echo data through local processor only
+    pub const U2FHID_MSG : u8 = TYPE_INIT | 0x03; // Send U2F message frame
+    pub const U2FHID_LOCK: u8 = TYPE_INIT | 0x04; // Send lock channel command
+    pub const U2FHID_INIT: u8 = TYPE_INIT | 0x06; // Channel initialization
+    pub const U2FHID_WINK: u8 = TYPE_INIT | 0x08; // Send device identification wink
+    pub const U2FHID_SYNC: u8 = TYPE_INIT | 0x3c; // Protocol resync command
+    pub const U2FHID_ERROR: u8 = TYPE_INIT | 0x3f; // Error response
 
-    pub const U2FHID_VENDOR_FIRST: u8 = (TYPE_INIT | 0x40); // First vendor defined command
-    pub const U2FHID_VENDOR_LAST: u8 = (TYPE_INIT | 0x7f); // Last vendor defined command
+    pub const U2FHID_VENDOR_FIRST: u8 = TYPE_INIT | 0x40; // First vendor defined command
+    pub const U2FHID_VENDOR_LAST: u8 = TYPE_INIT | 0x7f; // Last vendor defined command
 
     // U2FHID_INIT command defines
 
