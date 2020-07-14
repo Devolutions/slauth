@@ -174,7 +174,7 @@ impl CredentialCreationVerifier {
             return Err(Error::CredentialError(CredentialError::UserPresentFlag));
         }
 
-        let has_user_verification = dbg!((attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) != 0);
+        let has_user_verification = (attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) != 0;
         if let Some(Some(UserVerificationRequirement::Required)) = self.context.authenticator_selection.as_ref().map(|auth_select| auth_select.user_verification.as_ref()) {
             if !has_user_verification {
                 return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
