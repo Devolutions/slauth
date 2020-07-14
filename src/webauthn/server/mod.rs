@@ -109,6 +109,12 @@ struct Rp {
     pub id: Option<String>,
 }
 
+pub struct CredentialCreationResult {
+    pub public_key: CredentialPublicKey,
+    pub sign_count: u32,
+    pub has_user_verification: bool,
+}
+
 pub struct CredentialCreationVerifier {
     pub credential: PublicKeyCredential,
     pub context: PublicKeyCredentialCreationOptions,
@@ -134,7 +140,7 @@ impl CredentialCreationVerifier {
         }
     }
 
-    pub fn verify(&mut self) -> Result<(CredentialPublicKey, u32), Error> {
+    pub fn verify(&mut self) -> Result<CredentialCreationResult, Error> {
         let response = self.credential.response.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
         let client_data_json = base64::decode(&response.client_data_json)?;
@@ -168,12 +174,10 @@ impl CredentialCreationVerifier {
             return Err(Error::CredentialError(CredentialError::UserPresentFlag));
         }
 
-        if let Some(Some(user_verification)) = self.context.authenticator_selection.as_ref().map(|auth_select| auth_select.user_verification.as_ref()) {
-            match user_verification {
-                UserVerificationRequirement::Required => if (attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) == 0 {
-                    return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
-                }
-                _ => {}
+        let has_user_verification = (attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) != 0;
+        if let Some(Some(UserVerificationRequirement::Required)) = self.context.authenticator_selection.as_ref().map(|auth_select| auth_select.user_verification.as_ref()) {
+            if !has_user_verification {
+                return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
             }
         }
 
@@ -262,8 +266,17 @@ impl CredentialCreationVerifier {
             }
         }
 
-        Ok((attested_credential_data.credential_public_key, attestation.auth_data.sign_count))
+        Ok(CredentialCreationResult {
+            public_key: attested_credential_data.credential_public_key,
+            sign_count: attestation.auth_data.sign_count,
+            has_user_verification,
+        })
     }
+}
+
+pub struct CredentialRequestResult {
+    pub sign_count: u32,
+    pub has_user_verification: bool,
 }
 
 pub struct CredentialRequestBuilder {
@@ -352,7 +365,7 @@ impl CredentialRequestVerifier {
         }
     }
 
-    pub fn verify(&mut self) -> Result<u32, Error> {
+    pub fn verify(&mut self) -> Result<CredentialRequestResult, Error> {
         let response = self.credential.response.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
         let signature = base64::decode(&response.signature.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?)?;
@@ -402,12 +415,10 @@ impl CredentialRequestVerifier {
             return Err(Error::CredentialError(CredentialError::UserPresentFlag));
         }
 
-        if let Some(user_verification) = self.context.user_verification.as_ref() {
-            match user_verification {
-                UserVerificationRequirement::Required => if (auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) == 0 {
-                    return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
-                }
-                _ => {}
+        let has_user_verification = (auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) != 0;
+        if let Some(UserVerificationRequirement::Required) = self.context.user_verification.as_ref() {
+            if !has_user_verification {
+                return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
             }
         }
 
@@ -420,7 +431,7 @@ impl CredentialRequestVerifier {
         hasher.input(client_data_json);
         let mut client_data_hash = hasher.result().to_vec();
 
-        let mut msg = raw_auth_data.clone();
+        let mut msg = raw_auth_data;
         msg.append(&mut client_data_hash);
 
         let mut key = Vec::new();
@@ -445,7 +456,10 @@ impl CredentialRequestVerifier {
             return Err(Error::CredentialError(CredentialError::Other(String::from("Sign count is inconsistent, might be a cloned key"))));
         }
 
-        Ok(auth_data.sign_count)
+        Ok(CredentialRequestResult {
+            sign_count: auth_data.sign_count,
+            has_user_verification,
+        })
     }
 }
 

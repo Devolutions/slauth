@@ -114,7 +114,7 @@ pub enum AuthenticatorAttachment {
     CrossPlatform,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum UserVerificationRequirement {
     Required,
