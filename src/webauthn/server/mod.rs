@@ -14,6 +14,7 @@ pub struct CredentialCreationBuilder {
     user: Option<User>,
     rp: Option<Rp>,
     user_verification_requirement: Option<UserVerificationRequirement>,
+    exclude_credentials: Vec<PublicKeyCredentialDescriptor>,
 }
 
 impl CredentialCreationBuilder {
@@ -23,6 +24,7 @@ impl CredentialCreationBuilder {
             user: None,
             rp: None,
             user_verification_requirement: None,
+            exclude_credentials: vec![],
         }
     }
 
@@ -59,6 +61,11 @@ impl CredentialCreationBuilder {
         self
     }
 
+    pub fn exclude_credentials(mut self, exclude_credentials: Vec<PublicKeyCredentialDescriptor>) -> Self {
+        self.exclude_credentials = exclude_credentials;
+        self
+    }
+
     pub fn build(self) -> Result<PublicKeyCredentialCreationOptions, Error> {
         let challenge = self.challenge.ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
 
@@ -84,7 +91,7 @@ impl CredentialCreationBuilder {
                 alg: WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2,
             }],
             timeout: None,
-            exclude_credentials: vec![],
+            exclude_credentials: self.exclude_credentials,
             authenticator_selection: Some(AuthenticatorSelectionCriteria {
                 authenticator_attachment: None,
                 require_resident_key: None,
@@ -319,9 +326,9 @@ impl CredentialRequestBuilder {
     pub fn build(self) -> Result<PublicKeyCredentialRequestOptions, Error> {
         let challenge = self.challenge.ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
         let mut allow_credentials = Vec::new();
-        self.allow_credentials.iter().for_each(|id| allow_credentials.push(PublicKeyCredentialDescriptor {
+        self.allow_credentials.into_iter().for_each(|id| allow_credentials.push(PublicKeyCredentialDescriptor {
             cred_type: PublicKeyCredentialType::PublicKey,
-            id: id.clone(),
+            id,
             transports: None,
         }));
 
@@ -377,9 +384,10 @@ impl CredentialRequestVerifier {
         let raw_auth_data = base64::decode(response.authenticator_data.as_ref().ok_or_else(|| Error::Other("Attestation object must be present for verification".to_string()))?)?;
         let (auth_data, raw_auth_data) = AuthenticatorData::from_vec(raw_auth_data)?;
 
+        let credential_id = self.credential.id.clone();
         let descriptor = PublicKeyCredentialDescriptor {
             cred_type: PublicKeyCredentialType::PublicKey,
-            id: self.credential.id.clone(),
+            id: credential_id,
             transports: None,
         };
 
