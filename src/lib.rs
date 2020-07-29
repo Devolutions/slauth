@@ -15,11 +15,10 @@ pub mod webauthn;
 
 #[cfg(feature = "native-bindings")]
 pub mod strings {
-    use std::ffi::{
-        CStr,
-        CString,
+    use std::{
+        ffi::{CStr, CString},
+        os::raw::c_char,
     };
-    use std::os::raw::c_char;
 
     pub unsafe fn c_char_to_string_checked(cchar: *const c_char) -> Option<String> {
         let c_str = CStr::from_ptr(cchar);
@@ -39,7 +38,9 @@ pub mod strings {
     }
 
     pub fn string_to_c_char(r_string: String) -> *mut c_char {
-        CString::new(r_string).expect("Converting a string into a c_char should not fail").into_raw()
+        CString::new(r_string)
+            .expect("Converting a string into a c_char should not fail")
+            .into_raw()
     }
 
     pub unsafe fn mut_c_char_to_string(cchar: *mut c_char) -> String {

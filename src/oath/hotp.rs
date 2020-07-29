@@ -53,7 +53,7 @@ impl HOTPBuilder {
             counter,
             resync,
             digits,
-            secret
+            secret,
         } = self;
 
         let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
@@ -126,7 +126,11 @@ impl HOTPContext {
     fn gen_at(&self, c: u64) -> String {
         let c_b_e = c.to_be_bytes();
 
-        let hs_sig = self.secret_key.sign(&c_b_e[..]).expect("This should not happen since HMAC can take key of any size").into_vec();
+        let hs_sig = self
+            .secret_key
+            .sign(&c_b_e[..])
+            .expect("This should not happen since HMAC can take key of any size")
+            .into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
         let s_num = s_bits % (10 as u32).pow(self.digits as u32);
@@ -137,12 +141,13 @@ impl HOTPContext {
 
 impl OtpAuth for HOTPContext {
     fn to_uri(&self, label: Option<&str>, issuer: Option<&str>) -> String {
-        let mut uri = format!("otpauth://hotp/{}?secret={}&algorithm={}&digits={}&counter={}",
-                              label.unwrap_or_else(|| "slauth"),
-                              base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
-                              self.alg.to_string(),
-                              self.digits,
-                              self.counter
+        let mut uri = format!(
+            "otpauth://hotp/{}?secret={}&algorithm={}&digits={}&counter={}",
+            label.unwrap_or_else(|| "slauth"),
+            base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
+            self.alg.to_string(),
+            self.digits,
+            self.counter
         );
 
         if let Some(iss) = issuer {
@@ -153,19 +158,31 @@ impl OtpAuth for HOTPContext {
         uri
     }
 
-    fn from_uri(uri: &str) -> Result<Self, String> where Self: Sized {
+    fn from_uri(uri: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
         let mut uri_it = uri.split("://");
 
-        uri_it.next().filter(|scheme| scheme.eq(&"otpauth")).ok_or_else(|| { "Otpauth uri is malformed".to_string() })?;
+        uri_it
+            .next()
+            .filter(|scheme| scheme.eq(&"otpauth"))
+            .ok_or_else(|| "Otpauth uri is malformed".to_string())?;
 
         let type_label_it_opt = uri_it.next().map(|type_label_param| type_label_param.split('/'));
 
         if let Some(mut type_label_it) = type_label_it_opt {
-            type_label_it.next().filter(|otp_type| otp_type.eq(&"hotp")).ok_or_else(|| { "Otpauth uri is malformed, bad type".to_string() })?;
+            type_label_it
+                .next()
+                .filter(|otp_type| otp_type.eq(&"hotp"))
+                .ok_or_else(|| "Otpauth uri is malformed, bad type".to_string())?;
 
-            let param_it_opt = type_label_it.next().and_then(|label_param| label_param.split('?').last().map(|s| s.split('&')));
+            let param_it_opt = type_label_it
+                .next()
+                .and_then(|label_param| label_param.split('?').last().map(|s| s.split('&')));
 
-            param_it_opt.ok_or_else(|| { "Otpauth uri is malformed, missing parameters".to_string() })
+            param_it_opt
+                .ok_or_else(|| "Otpauth uri is malformed, missing parameters".to_string())
                 .and_then(|param_it| {
                     let mut secret = Vec::<u8>::new();
                     let mut counter = std::u64::MAX;
@@ -177,13 +194,17 @@ impl OtpAuth for HOTPContext {
 
                         match s_param_it.next() {
                             Some("secret") => {
-                                secret = s_param_it.next().and_then(|s| {
-                                    base32::decode(base32::Alphabet::RFC4648 { padding: false }, s)
-                                }).ok_or_else(|| { "Otpauth uri is malformed, missing secret value".to_string() })?;
+                                secret = s_param_it
+                                    .next()
+                                    .and_then(decode_hex_or_base_32)
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing secret value".to_string())?;
                                 continue;
                             }
                             Some("algorithm") => {
-                                alg = match s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing algorithm value".to_string() })? {
+                                alg = match s_param_it
+                                    .next()
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing algorithm value".to_string())?
+                                {
                                     "SHA256" => HashesAlgorithm::SHA256,
                                     "SHA512" => HashesAlgorithm::SHA512,
                                     _ => HashesAlgorithm::SHA1,
@@ -191,11 +212,19 @@ impl OtpAuth for HOTPContext {
                                 continue;
                             }
                             Some("digits") => {
-                                digits = s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing digits value".to_string() })?.parse::<usize>().map_err(|_| "Otpauth uri is malformed, bad digits value".to_string())?;
+                                digits = s_param_it
+                                    .next()
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing digits value".to_string())?
+                                    .parse::<usize>()
+                                    .map_err(|_| "Otpauth uri is malformed, bad digits value".to_string())?;
                                 continue;
                             }
                             Some("counter") => {
-                                counter = s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing counter value".to_string() })?.parse::<u64>().map_err(|_| "Otpauth uri is malformed, bad counter value".to_string())?;
+                                counter = s_param_it
+                                    .next()
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing counter value".to_string())?
+                                    .parse::<u64>()
+                                    .map_err(|_| "Otpauth uri is malformed, bad counter value".to_string())?;
                                 continue;
                             }
                             _ => {}
@@ -225,54 +254,57 @@ impl OtpAuth for HOTPContext {
 
 #[cfg(feature = "native-bindings")]
 mod native_bindings {
-    use std::os::raw::c_char;
-    use std::ptr::null_mut;
+    use std::{os::raw::c_char, ptr::null_mut};
 
-    use crate::strings;
     use super::*;
+    use crate::strings;
 
     #[no_mangle]
-    pub unsafe extern fn hotp_from_uri(uri: *const c_char) -> *mut HOTPContext {
+    pub unsafe extern "C" fn hotp_from_uri(uri: *const c_char) -> *mut HOTPContext {
         let uri_str = strings::c_char_to_string(uri);
-        Box::into_raw(HOTPContext::from_uri(&uri_str).map(|h| Box::new(h)).unwrap_or_else(|_| Box::from_raw(null_mut())))
+        Box::into_raw(
+            HOTPContext::from_uri(&uri_str)
+                .map(|h| Box::new(h))
+                .unwrap_or_else(|_| Box::from_raw(null_mut())),
+        )
     }
 
     #[no_mangle]
-    pub unsafe extern fn hotp_free(hotp: *mut HOTPContext) {
+    pub unsafe extern "C" fn hotp_free(hotp: *mut HOTPContext) {
         let _ = Box::from_raw(hotp);
     }
 
     #[no_mangle]
-    pub unsafe extern fn hotp_to_uri(hotp: *mut HOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
+    pub unsafe extern "C" fn hotp_to_uri(hotp: *mut HOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
         let hotp = &*hotp;
         let label = strings::c_char_to_string(label);
-        let label_opt = if label.len() > 0 {Some(label.as_str())} else {None};
+        let label_opt = if label.len() > 0 { Some(label.as_str()) } else { None };
         let issuer = strings::c_char_to_string(issuer);
-        let issuer_opt = if issuer.len() > 0 {Some(issuer.as_str())} else {None};
+        let issuer_opt = if issuer.len() > 0 { Some(issuer.as_str()) } else { None };
         strings::string_to_c_char(hotp.to_uri(label_opt, issuer_opt))
     }
 
     #[no_mangle]
-    pub unsafe extern fn hotp_gen(hotp: *mut HOTPContext) -> *mut c_char {
+    pub unsafe extern "C" fn hotp_gen(hotp: *mut HOTPContext) -> *mut c_char {
         let hotp = &*hotp;
         strings::string_to_c_char(hotp.gen())
     }
 
     #[no_mangle]
-    pub unsafe extern fn hotp_inc(hotp: *mut HOTPContext) {
+    pub unsafe extern "C" fn hotp_inc(hotp: *mut HOTPContext) {
         let hotp = &mut *hotp;
         hotp.inc();
     }
 
     #[no_mangle]
-    pub unsafe extern fn hotp_verify(hotp: *mut HOTPContext, code: *const c_char) -> bool {
+    pub unsafe extern "C" fn hotp_verify(hotp: *mut HOTPContext, code: *const c_char) -> bool {
         let hotp = &mut *hotp;
         let value = strings::c_char_to_string(code);
         hotp.verify(&value)
     }
 
     #[no_mangle]
-    pub unsafe extern fn hotp_validate_current(hotp: *mut HOTPContext, code: *const c_char) -> bool {
+    pub unsafe extern "C" fn hotp_validate_current(hotp: *mut HOTPContext, code: *const c_char) -> bool {
         let hotp = &*hotp;
         let value = strings::c_char_to_string(code);
         hotp.validate_current(&value)
@@ -283,7 +315,11 @@ mod native_bindings {
 fn hotp_from_uri() {
     const MK_ULTRA: &'static str = "patate";
 
-    let server = HOTPBuilder::new().counter(102).re_sync_parameter(3).secret(MK_ULTRA.as_bytes()).build();
+    let server = HOTPBuilder::new()
+        .counter(102)
+        .re_sync_parameter(3)
+        .secret(MK_ULTRA.as_bytes())
+        .build();
 
     let uri = server.to_uri(Some("Lucid:test@devolutions.net"), Some("Lucid"));
 
@@ -296,7 +332,11 @@ fn hotp_from_uri() {
 fn hotp_multiple() {
     const MK_ULTRA: &'static str = "patate";
 
-    let mut server = HOTPBuilder::new().counter(102).re_sync_parameter(3).secret(MK_ULTRA.as_bytes()).build();
+    let mut server = HOTPBuilder::new()
+        .counter(102)
+        .re_sync_parameter(3)
+        .secret(MK_ULTRA.as_bytes())
+        .build();
 
     let uri = server.to_uri(Some("Lucid:test@devolutions.net"), Some("Lucid"));
 
@@ -313,7 +353,11 @@ fn hotp_multiple() {
 fn hotp_multiple_resync() {
     const MK_ULTRA: &'static str = "patate";
 
-    let mut server = HOTPBuilder::new().counter(102).re_sync_parameter(3).secret(MK_ULTRA.as_bytes()).build();
+    let mut server = HOTPBuilder::new()
+        .counter(102)
+        .re_sync_parameter(3)
+        .secret(MK_ULTRA.as_bytes())
+        .build();
 
     let uri = server.to_uri(Some("Lucid:test@devolutions.net"), Some("Lucid"));
 

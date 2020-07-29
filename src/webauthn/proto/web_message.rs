@@ -80,7 +80,7 @@ impl PartialEq for PublicKeyCredentialDescriptor {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum PublicKeyCredentialType {
     #[serde(rename = "public-key")]
-    PublicKey
+    PublicKey,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -140,7 +140,7 @@ pub struct PublicKeyCredential {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct AuthenticatorAttestationResponse  {
+pub struct AuthenticatorAttestationResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_object: Option<String>,
     #[serde(rename = "clientDataJSON")]

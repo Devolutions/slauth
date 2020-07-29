@@ -1,11 +1,13 @@
-use std::fmt::{Display, Formatter};
-use std::io::Error as IoError;
-use std::error::Error as StdError;
+use base64::DecodeError;
+use ring::error::Unspecified;
 use serde_cbor::Error as CborError;
 use serde_json::Error as JsonError;
-use base64::DecodeError;
+use std::{
+    error::Error as StdError,
+    fmt::{Display, Formatter},
+    io::Error as IoError,
+};
 use webpki::Error as WebPkiError;
-use ring::error::Unspecified;
 
 #[derive(Debug)]
 pub enum CredentialError {
@@ -67,7 +69,6 @@ impl From<Unspecified> for Error {
     }
 }
 
-
 impl StdError for Error {}
 
 impl Display for CredentialError {
@@ -86,7 +87,7 @@ impl Display for CredentialError {
             CertificateNotSupported => write!(f, "Ecdaaa certificate is not supported"),
             AttestationMissing => write!(f, "Missing attested credential data"),
             AttestationNotSupported => write!(f, "Attestation format is not supported"),
-            Other(s) => write!(f, "{}", s)
+            Other(s) => write!(f, "{}", s),
         }
     }
 }
@@ -99,7 +100,7 @@ impl Display for Error {
             Version => write!(f, "Unsupported version"),
             CredentialError(ce) => ce.fmt(f),
             Other(s) => write!(f, "{}", s),
-            Base64Error(e) =>  e.fmt(f),
+            Base64Error(e) => e.fmt(f),
             CborError(cb_e) => cb_e.fmt(f),
             JsonError(js_e) => js_e.fmt(f),
             WebPkiError(wp_e) => wp_e.fmt(f),

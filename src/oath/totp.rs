@@ -14,7 +14,6 @@ pub struct TOTPBuilder {
     initial_time: Option<u64>,
     digits: Option<usize>,
     secret: Option<Vec<u8>>,
-
 }
 
 impl TOTPBuilder {
@@ -69,7 +68,7 @@ impl TOTPBuilder {
             forward_resync,
             digits,
             secret,
-            initial_time
+            initial_time,
         } = self;
 
         let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
@@ -85,7 +84,7 @@ impl TOTPBuilder {
             secret,
             secret_key,
             initial_time: initial_time.unwrap_or_else(|| 0),
-            clock_drift: 0
+            clock_drift: 0,
         }
     }
 }
@@ -111,7 +110,6 @@ impl TOTPContext {
     /// Generate the current TOTP code corresponding to the counter value
     pub fn gen(&self) -> String {
         self.gen_with(0)
-
     }
 
     /// Generate the current TOTP code corresponding to the counter value
@@ -123,7 +121,7 @@ impl TOTPContext {
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
             d if d < 0 => counter -= d.abs() as u64,
-            _ => {},
+            _ => {}
         }
 
         self.gen_at(counter)
@@ -150,7 +148,7 @@ impl TOTPContext {
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
             d if d < 0 => counter -= d.abs() as u64,
-            _ => {},
+            _ => {}
         }
 
         for i in (counter - self.backward_resync)..(counter + self.forward_resync) {
@@ -159,12 +157,12 @@ impl TOTPContext {
                     i if i > counter => {
                         let drift = (i - counter) as i64;
                         self.clock_drift += drift;
-                    },
+                    }
                     i if i < counter => {
                         let drift = (counter - i) as i64;
                         self.clock_drift -= drift;
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
                 return true;
             }
@@ -176,7 +174,11 @@ impl TOTPContext {
     fn gen_at(&self, t: u64) -> String {
         let c_b_e = t.to_be_bytes();
 
-        let hs_sig = self.secret_key.sign(&c_b_e[..]).expect("This should not happen since HMAC can take key of any size").into_vec();
+        let hs_sig = self
+            .secret_key
+            .sign(&c_b_e[..])
+            .expect("This should not happen since HMAC can take key of any size")
+            .into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
         let s_num = s_bits % (10 as u32).pow(self.digits as u32);
@@ -187,12 +189,13 @@ impl TOTPContext {
 
 impl OtpAuth for TOTPContext {
     fn to_uri(&self, label: Option<&str>, issuer: Option<&str>) -> String {
-        let mut uri = format!("otpauth://totp/{}?secret={}&algorithm={}&digits={}&period={}",
-                              label.unwrap_or_else(|| "slauth"),
-                              base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
-                              self.alg.to_string(),
-                              self.digits,
-                              self.period
+        let mut uri = format!(
+            "otpauth://totp/{}?secret={}&algorithm={}&digits={}&period={}",
+            label.unwrap_or_else(|| "slauth"),
+            base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
+            self.alg.to_string(),
+            self.digits,
+            self.period
         );
 
         if let Some(iss) = issuer {
@@ -203,19 +206,31 @@ impl OtpAuth for TOTPContext {
         uri
     }
 
-    fn from_uri(uri: &str) -> Result<Self, String> where Self: Sized {
+    fn from_uri(uri: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
         let mut uri_it = uri.split("://");
 
-        uri_it.next().filter(|scheme| scheme.eq(&"otpauth")).ok_or_else(|| { "Otpauth uri is malformed".to_string() })?;
+        uri_it
+            .next()
+            .filter(|scheme| scheme.eq(&"otpauth"))
+            .ok_or_else(|| "Otpauth uri is malformed".to_string())?;
 
         let type_label_it_opt = uri_it.next().map(|type_label_param| type_label_param.split('/'));
 
         if let Some(mut type_label_it) = type_label_it_opt {
-            type_label_it.next().filter(|otp_type| otp_type.eq(&"totp")).ok_or_else(|| { "Otpauth uri is malformed, bad type".to_string() })?;
+            type_label_it
+                .next()
+                .filter(|otp_type| otp_type.eq(&"totp"))
+                .ok_or_else(|| "Otpauth uri is malformed, bad type".to_string())?;
 
-            let param_it_opt = type_label_it.next().and_then(|label_param| label_param.split('?').last().map(|s| s.split('&')));
+            let param_it_opt = type_label_it
+                .next()
+                .and_then(|label_param| label_param.split('?').last().map(|s| s.split('&')));
 
-            param_it_opt.ok_or_else(|| { "Otpauth uri is malformed, missing parameters".to_string() })
+            param_it_opt
+                .ok_or_else(|| "Otpauth uri is malformed, missing parameters".to_string())
                 .and_then(|param_it| {
                     let mut secret = Vec::<u8>::new();
                     let mut period = TOTP_DEFAULT_PERIOD_VALUE;
@@ -227,24 +242,38 @@ impl OtpAuth for TOTPContext {
 
                         match s_param_it.next() {
                             Some("secret") => {
-                                secret = s_param_it.next().and_then(|s| base32::decode(base32::Alphabet::RFC4648 {padding: false}, s)).ok_or_else(|| { "Otpauth uri is malformed, missing secret value".to_string() })?;
-                                continue
+                                secret = s_param_it
+                                    .next()
+                                    .and_then(decode_hex_or_base_32)
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing secret value".to_string())?;
+                                continue;
                             }
                             Some("algorithm") => {
-                                alg = match s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing algorithm value".to_string() })? {
+                                alg = match s_param_it
+                                    .next()
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing algorithm value".to_string())?
+                                {
                                     "SHA256" => HashesAlgorithm::SHA256,
                                     "SHA512" => HashesAlgorithm::SHA512,
                                     _ => HashesAlgorithm::SHA1,
                                 };
-                                continue
+                                continue;
                             }
                             Some("digits") => {
-                                digits = s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing digits value".to_string() })?.parse::<usize>().map_err(|_| "Otpauth uri is malformed, bad digits value".to_string())?;
-                                continue
+                                digits = s_param_it
+                                    .next()
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing digits value".to_string())?
+                                    .parse::<usize>()
+                                    .map_err(|_| "Otpauth uri is malformed, bad digits value".to_string())?;
+                                continue;
                             }
                             Some("period") => {
-                                period = s_param_it.next().ok_or_else(|| { "Otpauth uri is malformed, missing period value".to_string() })?.parse::<u64>().map_err(|_| "Otpauth uri is malformed, bad period value".to_string())?;
-                                continue
+                                period = s_param_it
+                                    .next()
+                                    .ok_or_else(|| "Otpauth uri is malformed, missing period value".to_string())?
+                                    .parse::<u64>()
+                                    .map_err(|_| "Otpauth uri is malformed, bad period value".to_string())?;
+                                continue;
                             }
                             _ => {}
                         }
@@ -265,7 +294,7 @@ impl OtpAuth for TOTPContext {
                         backward_resync: TOTP_DEFAULT_BACK_RESYNC_VALUE,
                         forward_resync: TOTP_DEFAULT_FORWARD_RESYNC_VALUE,
                         initial_time: 0,
-                        clock_drift: 0
+                        clock_drift: 0,
                     })
                 })
         } else {
@@ -276,54 +305,60 @@ impl OtpAuth for TOTPContext {
 
 #[cfg(feature = "native-bindings")]
 mod native_bindings {
-    use std::os::raw::{c_char, c_ulong};
-    use std::ptr::null_mut;
     use crate::strings;
+    use std::{
+        os::raw::{c_char, c_ulong},
+        ptr::null_mut,
+    };
 
     use super::*;
 
     #[no_mangle]
-    pub unsafe extern fn totp_from_uri(uri: *const c_char) -> *mut TOTPContext {
+    pub unsafe extern "C" fn totp_from_uri(uri: *const c_char) -> *mut TOTPContext {
         let uri_str = strings::c_char_to_string(uri);
-        Box::into_raw(TOTPContext::from_uri(&uri_str).map(|h| Box::new(h)).unwrap_or_else(|_| Box::from_raw(null_mut())))
+        Box::into_raw(
+            TOTPContext::from_uri(&uri_str)
+                .map(|h| Box::new(h))
+                .unwrap_or_else(|_| Box::from_raw(null_mut())),
+        )
     }
 
     #[no_mangle]
-    pub unsafe extern fn totp_free(totp: *mut TOTPContext) {
+    pub unsafe extern "C" fn totp_free(totp: *mut TOTPContext) {
         let _ = Box::from_raw(totp);
     }
 
     #[no_mangle]
-    pub unsafe extern fn totp_to_uri(totp: *mut TOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
+    pub unsafe extern "C" fn totp_to_uri(totp: *mut TOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
         let totp = &*totp;
         let label = strings::c_char_to_string(label);
-        let label_opt = if label.len() > 0 {Some(label.as_str())} else {None};
+        let label_opt = if label.len() > 0 { Some(label.as_str()) } else { None };
         let issuer = strings::c_char_to_string(issuer);
-        let issuer_opt = if issuer.len() > 0 {Some(issuer.as_str())} else {None};
+        let issuer_opt = if issuer.len() > 0 { Some(issuer.as_str()) } else { None };
         strings::string_to_c_char(totp.to_uri(label_opt, issuer_opt))
     }
 
     #[no_mangle]
-    pub unsafe extern fn totp_gen(totp: *mut TOTPContext) -> *mut c_char {
+    pub unsafe extern "C" fn totp_gen(totp: *mut TOTPContext) -> *mut c_char {
         let totp = &*totp;
         strings::string_to_c_char(totp.gen())
     }
 
     #[no_mangle]
-    pub unsafe extern fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
+    pub unsafe extern "C" fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
         let totp = &*totp;
         strings::string_to_c_char(totp.gen_with(elapsed as u64))
     }
 
     #[no_mangle]
-    pub unsafe extern fn totp_verify(totp: *mut TOTPContext, code: *const c_char) -> bool {
+    pub unsafe extern "C" fn totp_verify(totp: *mut TOTPContext, code: *const c_char) -> bool {
         let totp = &mut *totp;
         let value = strings::c_char_to_string(code);
         totp.verify(&value)
     }
 
     #[no_mangle]
-    pub unsafe extern fn totp_validate_current(totp: *mut TOTPContext, code: *const c_char) -> bool {
+    pub unsafe extern "C" fn totp_validate_current(totp: *mut TOTPContext, code: *const c_char) -> bool {
         let totp = &*totp;
         let value = strings::c_char_to_string(code);
         totp.validate_current(&value)
@@ -339,8 +374,7 @@ fn test_multiple() {
     let client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
 
     for _ in 0..10 {
-        use std::thread::sleep;
-        use std::time::Duration;
+        use std::{thread::sleep, time::Duration};
         assert!(server.verify(&client.gen()));
         sleep(Duration::from_secs(5));
     }
@@ -350,14 +384,17 @@ fn test_multiple() {
 fn test_clock_drifting() {
     const MK_ULTRA: &'static str = "patate";
 
-    let mut server = TOTPContext::builder().period(5).secret(MK_ULTRA.as_bytes()).re_sync_parameter(3, 3).build();
+    let mut server = TOTPContext::builder()
+        .period(5)
+        .secret(MK_ULTRA.as_bytes())
+        .re_sync_parameter(3, 3)
+        .build();
 
     let client = TOTPContext::from_uri(server.to_uri(None, None).as_str()).unwrap();
 
     for _ in 0..10 {
         let client_code = client.gen();
-        use std::thread::sleep;
-        use std::time::Duration;
+        use std::{thread::sleep, time::Duration};
         sleep(Duration::from_secs(6));
         assert!(server.verify(&client_code));
     }

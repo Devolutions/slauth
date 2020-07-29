@@ -79,13 +79,21 @@ pub enum U2fResponseType {
 
 impl From<U2fRequestType> for U2fResponseType {
     fn from(t: U2fRequestType) -> Self {
-        if let U2fRequestType::Register = t { U2fResponseType::Register } else { U2fResponseType::Sign }
+        if let U2fRequestType::Register = t {
+            U2fResponseType::Register
+        } else {
+            U2fResponseType::Sign
+        }
     }
 }
 
 impl<'a> From<&'a U2fRequestType> for U2fResponseType {
     fn from(t: &'a U2fRequestType) -> Self {
-        if let U2fRequestType::Register = t { U2fResponseType::Register } else { U2fResponseType::Sign }
+        if let U2fRequestType::Register = t {
+            U2fResponseType::Register
+        } else {
+            U2fResponseType::Sign
+        }
     }
 }
 

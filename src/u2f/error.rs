@@ -1,9 +1,11 @@
-use std::io::Error as IoError;
 use ring::error::{KeyRejected, Unspecified};
-use std::error::Error as StdError;
-use std::fmt::{Display, Formatter};
 #[cfg(feature = "u2f-server")]
 use serde_json::error::Error as SJsonError;
+use std::{
+    error::Error as StdError,
+    fmt::{Display, Formatter},
+    io::Error as IoError,
+};
 
 #[derive(Debug)]
 pub enum Error {
@@ -86,11 +88,16 @@ impl From<SJsonError> for Error {
 }
 
 pub trait ResultExt<T, E> {
-    fn then<U,N, F>(self, op: F) -> Result<U, N> where F: FnOnce(Result<T, E>) -> Result<U, N>;
+    fn then<U, N, F>(self, op: F) -> Result<U, N>
+    where
+        F: FnOnce(Result<T, E>) -> Result<U, N>;
 }
 
-impl<T,E> ResultExt<T, E> for Result<T, E> {
-    fn then<U, N, F>(self, op: F) -> Result<U, N> where F: FnOnce(Result<T, E>) -> Result<U, N> {
+impl<T, E> ResultExt<T, E> for Result<T, E> {
+    fn then<U, N, F>(self, op: F) -> Result<U, N>
+    where
+        F: FnOnce(Result<T, E>) -> Result<U, N>,
+    {
         op(self)
     }
 }

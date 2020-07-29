@@ -1,21 +1,19 @@
-use crate::webauthn::error::Error;
-use serde_derive::*;
-use serde_cbor::Value;
-use std::io::{Cursor, Read};
-use byteorder::{ReadBytesExt, BigEndian};
-use bytes::Buf;
-use std::collections::BTreeMap;
-use crate::webauthn::proto::constants::{
-    ECDSA_Y_PREFIX_POSITIVE,
-    ECDSA_Y_PREFIX_NEGATIVE,
-    ECDSA_Y_PREFIX_UNCOMPRESSED,
-    WEBAUTHN_FORMAT_PACKED,
-    WEBAUTHN_FORMAT_FIDO_U2F,
-    WEBAUTHN_FORMAT_TPM,
-    WEBAUTHN_FORMAT_ANDROID_KEY,
-    WEBAUTHN_FORMAT_ANDROID_SAFETYNET
+use crate::webauthn::{
+    error::Error,
+    proto::constants::{
+        ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
+        WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
+    },
 };
-use std::str::FromStr;
+use byteorder::{BigEndian, ReadBytesExt};
+use bytes::Buf;
+use serde_cbor::Value;
+use serde_derive::*;
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Read},
+    str::FromStr,
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -78,7 +76,7 @@ pub struct AndroidKey {
 pub struct AndroidSafetynet {
     pub ver: String,
     #[serde(with = "serde_bytes")]
-    pub response: Vec<u8>
+    pub response: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -134,15 +132,20 @@ impl AuthenticatorData {
                 credential_id,
                 credential_public_key,
             })
-        } else { None };
+        } else {
+            None
+        };
 
-        Ok((AuthenticatorData {
-            rp_id_hash,
-            flags,
-            sign_count,
-            attested_credential_data,
-            extensions: Value::Null,
-        }, cursor.into_inner()))
+        Ok((
+            AuthenticatorData {
+                rp_id_hash,
+                flags,
+                sign_count,
+                attested_credential_data,
+                extensions: Value::Null,
+            },
+            cursor.into_inner(),
+        ))
     }
 }
 
@@ -166,55 +169,61 @@ impl CredentialPublicKey {
     pub fn from_value(value: serde_cbor::Value) -> Result<Self, Error> {
         let map = match value {
             Value::Map(m) => m,
-            _ => { BTreeMap::new() }
+            _ => BTreeMap::new(),
         };
 
-        let key_type = map.get(&Value::Integer(1)).map(|val| {
-            match val {
+        let key_type = map
+            .get(&Value::Integer(1))
+            .map(|val| match val {
                 Value::Integer(i) => *i as i64,
                 _ => 0i64,
-            }
-        }).ok_or(Error::Other("Key type missing".to_string()))?;
+            })
+            .ok_or(Error::Other("Key type missing".to_string()))?;
 
-        let alg = map.get(&Value::Integer(3)).map(|val| {
-            match val {
+        let alg = map
+            .get(&Value::Integer(3))
+            .map(|val| match val {
                 Value::Integer(i) => *i as i64,
                 _ => 0i64,
-            }
-        }).ok_or(Error::Other("algorithm missing".to_string()))?;
+            })
+            .ok_or(Error::Other("algorithm missing".to_string()))?;
 
-        let curve = map.get(&Value::Integer(-1)).map(|val| {
-            match val {
+        let curve = map
+            .get(&Value::Integer(-1))
+            .map(|val| match val {
                 Value::Integer(i) => *i as i64,
                 _ => 0i64,
-            }
-        }).ok_or(Error::Other("curve missing".to_string()))?;
+            })
+            .ok_or(Error::Other("curve missing".to_string()))?;
 
-        let x = map.get(&Value::Integer(-2)).and_then(|val| {
-            match val {
+        let x = map
+            .get(&Value::Integer(-2))
+            .and_then(|val| match val {
                 Value::Bytes(i) => {
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&i[0..32]);
                     Some(array)
                 }
                 _ => None,
-            }
-        }).ok_or(Error::Other("x coordinate missing".to_string()))?;
+            })
+            .ok_or(Error::Other("x coordinate missing".to_string()))?;
 
-        let coords = map.get(&Value::Integer(-3)).and_then(|val| {
-            match val {
+        let coords = map
+            .get(&Value::Integer(-3))
+            .and_then(|val| match val {
                 Value::Bytes(i) => {
                     let mut array = [0u8; 32];
                     array.copy_from_slice(&i[0..32]);
                     Some(Coordinates::Uncompressed { x, y: array })
                 }
 
-                Value::Bool(b) => {
-                    Some(Coordinates::Compressed { x, y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVE } })
-                }
+                Value::Bool(b) => Some(Coordinates::Compressed {
+                    x,
+                    y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVE },
+                }),
                 _ => None,
-            }
-        }).ok_or(Error::Other("y coordinate missing".to_string()))?;
+            })
+            .ok_or(Error::Other("y coordinate missing".to_string()))?;
 
         Ok(CredentialPublicKey {
             key_type,
@@ -225,46 +234,55 @@ impl CredentialPublicKey {
     }
 }
 
-
 pub trait Message {
-    fn from_base64(string: &String) -> Result<Self, Error> where Self: Sized;
-    fn from_bytes(raw_values: &[u8]) -> Result<Self, Error> where Self: Sized;
+    fn from_base64(string: &String) -> Result<Self, Error>
+    where
+        Self: Sized;
+    fn from_bytes(raw_values: &[u8]) -> Result<Self, Error>
+    where
+        Self: Sized;
 }
 
 impl Message for AttestationObject {
-    fn from_base64(string: &String) -> Result<Self, Error> where Self: Sized {
+    fn from_base64(string: &String) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         let raw_values = base64::decode(string)?;
         Self::from_bytes(raw_values.as_slice())
     }
 
-    fn from_bytes(raw_values: &[u8]) -> Result<Self, Error> where Self: Sized {
+    fn from_bytes(raw_values: &[u8]) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         let value = serde_cbor::from_slice::<RawAttestationObject>(raw_values).map_err(|e| Error::CborError(e))?;
 
         let data = match value.auth_data {
             Value::Bytes(vec) => Ok(vec),
-            _ => Err(Error::Other("Cannot proceed without auth data".to_string()))
+            _ => Err(Error::Other("Cannot proceed without auth data".to_string())),
         }?;
 
         let att_stmt = match value.fmt.as_str() {
-            WEBAUTHN_FORMAT_PACKED => {
-                serde_cbor::value::from_value::<Packed>(value.att_stmt).ok().map(|packed| AttestationStatement::Packed(packed))
-            }
+            WEBAUTHN_FORMAT_PACKED => serde_cbor::value::from_value::<Packed>(value.att_stmt)
+                .ok()
+                .map(|packed| AttestationStatement::Packed(packed)),
 
-            WEBAUTHN_FORMAT_FIDO_U2F => {
-                serde_cbor::value::from_value::<FidoU2F>(value.att_stmt).ok().map(|fido_u2f| AttestationStatement::FidoU2F(fido_u2f))
-            }
+            WEBAUTHN_FORMAT_FIDO_U2F => serde_cbor::value::from_value::<FidoU2F>(value.att_stmt)
+                .ok()
+                .map(|fido_u2f| AttestationStatement::FidoU2F(fido_u2f)),
 
-            WEBAUTHN_FORMAT_TPM => {
-                serde_cbor::value::from_value::<TPM>(value.att_stmt).ok().map(|tpm| AttestationStatement::TPM(tpm))
-            }
+            WEBAUTHN_FORMAT_TPM => serde_cbor::value::from_value::<TPM>(value.att_stmt)
+                .ok()
+                .map(|tpm| AttestationStatement::TPM(tpm)),
 
-            WEBAUTHN_FORMAT_ANDROID_KEY => {
-                serde_cbor::value::from_value::<AndroidKey>(value.att_stmt).ok().map(|android_key| AttestationStatement::AndroidKey(android_key))
-            }
+            WEBAUTHN_FORMAT_ANDROID_KEY => serde_cbor::value::from_value::<AndroidKey>(value.att_stmt)
+                .ok()
+                .map(|android_key| AttestationStatement::AndroidKey(android_key)),
 
-            WEBAUTHN_FORMAT_ANDROID_SAFETYNET => {
-                serde_cbor::value::from_value::<AndroidSafetynet>(value.att_stmt).ok().map(|android_safetynet| AttestationStatement::AndroidSafetynet(android_safetynet))
-            }
+            WEBAUTHN_FORMAT_ANDROID_SAFETYNET => serde_cbor::value::from_value::<AndroidSafetynet>(value.att_stmt)
+                .ok()
+                .map(|android_safetynet| AttestationStatement::AndroidSafetynet(android_safetynet)),
 
             _ => None,
         };
@@ -352,7 +370,10 @@ impl FromStr for Coordinates {
                     let mut x = [0u8; 32];
                     x.copy_from_slice(&key[1..32]);
 
-                    Ok(Coordinates::Compressed { x, y: ECDSA_Y_PREFIX_POSITIVE })
+                    Ok(Coordinates::Compressed {
+                        x,
+                        y: ECDSA_Y_PREFIX_POSITIVE,
+                    })
                 } else {
                     Err(Error::Other("Key is wrong length".to_string()))
                 }
@@ -363,13 +384,16 @@ impl FromStr for Coordinates {
                     let mut x = [0u8; 32];
                     x.copy_from_slice(&key[1..32]);
 
-                    Ok(Coordinates::Compressed { x, y: ECDSA_Y_PREFIX_NEGATIVE })
+                    Ok(Coordinates::Compressed {
+                        x,
+                        y: ECDSA_Y_PREFIX_NEGATIVE,
+                    })
                 } else {
                     Err(Error::Other("Key is wrong length".to_string()))
                 }
             }
 
-            _ => Err(Error::Other("Key prefix missing".to_string()))
+            _ => Err(Error::Other("Key prefix missing".to_string())),
         }
     }
 }

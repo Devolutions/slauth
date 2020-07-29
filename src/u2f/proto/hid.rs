@@ -4,12 +4,12 @@ pub mod hid_const {
 
     // Size of HID reports
 
-    pub const HID_RPT_SIZE: usize = 64;      // Default size of raw HID report
+    pub const HID_RPT_SIZE: usize = 64; // Default size of raw HID report
 
     // Frame layout - command- and continuation frames
 
     pub const CID_BROADCAST: u32 = 0xffff_ffff; // Broadcast channel id
-    pub const CID_BROADCAST_SLICE: [u8;4] = [0xff,0xff,0xff,0xff]; // Broadcast channel id
+    pub const CID_BROADCAST_SLICE: [u8; 4] = [0xff, 0xff, 0xff, 0xff]; // Broadcast channel id
 
     pub const TYPE_MASK: u8 = 0x80; // Frame type mask
     pub const TYPE_INIT: u8 = 0x80; // Initial frame identifier
@@ -30,7 +30,7 @@ pub mod hid_const {
     // U2FHID native commands
 
     pub const U2FHID_PING: u8 = TYPE_INIT | 0x01; // Echo data through local processor only
-    pub const U2FHID_MSG : u8 = TYPE_INIT | 0x03; // Send U2F message frame
+    pub const U2FHID_MSG: u8 = TYPE_INIT | 0x03; // Send U2F message frame
     pub const U2FHID_LOCK: u8 = TYPE_INIT | 0x04; // Send lock channel command
     pub const U2FHID_INIT: u8 = TYPE_INIT | 0x06; // Channel initialization
     pub const U2FHID_WINK: u8 = TYPE_INIT | 0x08; // Send device identification wink
@@ -66,35 +66,35 @@ pub mod hid_type {
 
     pub enum Packet {
         Init {
-            cmd: u8, // Frame type - b7 defines type
-            bcnth: u8, // Message byte count - high part
-            bcntl: u8, // Message byte count - low part
+            cmd: u8,                      // Frame type - b7 defines type
+            bcnth: u8,                    // Message byte count - high part
+            bcntl: u8,                    // Message byte count - low part
             data: [u8; HID_RPT_SIZE - 7], // Data payload
         },
         Cont {
-            seq: u8, // Frame type - b7 defines type
+            seq: u8,                      // Frame type - b7 defines type
             data: [u8; HID_RPT_SIZE - 5], // Data payload
-        }
+        },
     }
 
     pub struct U2fHidFrame {
         cid: u32, // Channel identifier
-        packet: Packet
+        packet: Packet,
     }
 
     impl U2fHidFrame {
         #[inline]
         pub fn frame_type(&self) -> u8 {
             match self.packet {
-                Packet::Init {cmd, ..} => cmd & TYPE_MASK,
-                Packet::Cont {seq, ..} => seq & TYPE_MASK,
+                Packet::Init { cmd, .. } => cmd & TYPE_MASK,
+                Packet::Cont { seq, .. } => seq & TYPE_MASK,
             }
         }
 
         #[inline]
         pub fn frame_cmd(&self) -> Option<u8> {
             match self.packet {
-                Packet::Init {cmd, ..} => Some(cmd & !TYPE_MASK),
+                Packet::Init { cmd, .. } => Some(cmd & !TYPE_MASK),
                 _ => None,
             }
         }
@@ -102,7 +102,7 @@ pub mod hid_type {
         #[inline]
         pub fn frame_seq(&self) -> Option<u8> {
             match self.packet {
-                Packet::Cont {seq, ..} => Some(seq & !TYPE_MASK),
+                Packet::Cont { seq, .. } => Some(seq & !TYPE_MASK),
                 _ => None,
             }
         }
@@ -110,7 +110,7 @@ pub mod hid_type {
         #[inline]
         pub fn msg_len(&self) -> Option<u16> {
             match self.packet {
-                Packet::Init {bcnth, bcntl, ..} => Some(bcnth as u16 * 256 + bcntl as u16),
+                Packet::Init { bcnth, bcntl, .. } => Some(bcnth as u16 * 256 + bcntl as u16),
                 _ => None,
             }
         }
@@ -122,12 +122,12 @@ pub mod hid_type {
 
     pub struct U2fHidInitRsp {
         nonce: [u8; INIT_NONCE_SIZE], // Client application nonce
-        cid: u32,// Client application nonce
-        interface_version: u8,// Channel identifier
-        major_version: u8,// Interface version
-        minor_version: u8,// Major version number
-        build_version: u8,// Minor version number
-        cap_flags: u8,// Build version number
+        cid: u32,                     // Client application nonce
+        interface_version: u8,        // Channel identifier
+        major_version: u8,            // Interface version
+        minor_version: u8,            // Major version number
+        build_version: u8,            // Minor version number
+        cap_flags: u8,                // Build version number
     }
 
     // U2FHID_SYNC command defines

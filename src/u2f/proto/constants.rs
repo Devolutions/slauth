@@ -29,7 +29,9 @@ pub const U2F_REGISTER_MAX_DATA_TBS_SIZE: usize = 1 + U2F_APPID_SIZE + U2F_CHAL_
 pub const U2F_AUTH_MAX_DATA_TBS_SIZE: usize = 1 + U2F_APPID_SIZE + U2F_CHAL_SIZE + 1 + 4;
 
 #[inline]
-pub const fn enc_size(x: u16) -> u16 {(x + 7) & 0xfff8}
+pub const fn enc_size(x: u16) -> u16 {
+    (x + 7) & 0xfff8
+}
 
 // EC (uncompressed) point
 

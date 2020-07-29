@@ -1,6 +1,8 @@
-use hmac::{Hmac, Mac};
-use hmac::crypto_mac::{InvalidKeyLength, MacResult};
-use hmac::digest::FixedOutput;
+use hmac::{
+    crypto_mac::{InvalidKeyLength, MacResult},
+    digest::FixedOutput,
+    Hmac, Mac,
+};
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
 
@@ -81,7 +83,9 @@ impl ToString for HashesAlgorithm {
 
 pub trait OtpAuth {
     fn to_uri(&self, label: Option<&str>, issuer: Option<&str>) -> String;
-    fn from_uri(uri: &str) -> Result<Self, String> where Self: Sized;
+    fn from_uri(uri: &str) -> Result<Self, String>
+    where
+        Self: Sized;
 }
 
 #[inline]
@@ -90,4 +94,10 @@ pub(crate) fn dt(hmac_res: &[u8]) -> u32 {
     let h = &hmac_res[offset_val..offset_val + 4];
 
     ((h[0] as u32 & 0x7f) << 24) | ((h[1] as u32 & 0xff) << 16) | ((h[2] as u32 & 0xff) << 8) | (h[3] as u32 & 0xff) as u32
+}
+
+#[inline]
+pub(crate) fn decode_hex_or_base_32(encoded: &str) -> Option<Vec<u8>> {
+    // Try base32 first then is it does not follows RFC4648, try HEX
+    base32::decode(base32::Alphabet::RFC4648 { padding: false }, encoded).or_else(|| hex::decode(encoded).ok())
 }

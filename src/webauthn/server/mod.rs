@@ -1,13 +1,27 @@
-use ring::signature;
-use ring::signature::UnparsedPublicKey;
-use ring::signature::VerificationAlgorithm;
+use ring::{
+    signature,
+    signature::{UnparsedPublicKey, VerificationAlgorithm},
+};
 use sha2::{Digest, Sha256};
 use webpki::{EndEntityCert, SignatureAlgorithm};
 
-use crate::webauthn::error::{Error, CredentialError};
-use crate::webauthn::proto::constants::{ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG};
-use crate::webauthn::proto::raw_message::{AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CredentialPublicKey, Message};
-use crate::webauthn::proto::web_message::{AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity, UserVerificationRequirement};
+use crate::webauthn::{
+    error::{CredentialError, Error},
+    proto::{
+        constants::{
+            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2,
+            WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG,
+            WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+        },
+        raw_message::{AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CredentialPublicKey, Message},
+        web_message::{
+            AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
+            PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
+            PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
+            UserVerificationRequirement,
+        },
+    },
+};
 
 pub struct CredentialCreationBuilder {
     challenge: Option<String>,
@@ -34,25 +48,17 @@ impl CredentialCreationBuilder {
     }
 
     pub fn user(mut self, id: String, name: String, display_name: String, icon: Option<String>) -> Self {
-        self.user = Some(
-            User {
-                id,
-                name,
-                display_name,
-                icon,
-            }
-        );
+        self.user = Some(User {
+            id,
+            name,
+            display_name,
+            icon,
+        });
         self
     }
 
     pub fn rp(mut self, name: String, icon: Option<String>, id: Option<String>) -> Self {
-        self.rp = Some(
-            Rp {
-                name,
-                icon,
-                id,
-            }
-        );
+        self.rp = Some(Rp { name, icon, id });
         self
     }
 
@@ -67,20 +73,28 @@ impl CredentialCreationBuilder {
     }
 
     pub fn build(self) -> Result<PublicKeyCredentialCreationOptions, Error> {
-        let challenge = self.challenge.ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
+        let challenge = self
+            .challenge
+            .ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
 
-        let user = self.user.map(|user| PublicKeyCredentialUserEntity {
-            id: user.id,
-            name: user.name,
-            display_name: user.display_name,
-            icon: user.icon,
-        }).ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a user".to_string()))?;
+        let user = self
+            .user
+            .map(|user| PublicKeyCredentialUserEntity {
+                id: user.id,
+                name: user.name,
+                display_name: user.display_name,
+                icon: user.icon,
+            })
+            .ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a user".to_string()))?;
 
-        let rp = self.rp.map(|rp| PublicKeyCredentialRpEntity {
-            id: rp.id,
-            name: rp.name,
-            icon: rp.icon,
-        }).ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a relying party".to_string()))?;
+        let rp = self
+            .rp
+            .map(|rp| PublicKeyCredentialRpEntity {
+                id: rp.id,
+                name: rp.name,
+                icon: rp.icon,
+            })
+            .ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a relying party".to_string()))?;
 
         Ok(PublicKeyCredentialCreationOptions {
             rp,
@@ -148,12 +162,19 @@ impl CredentialCreationVerifier {
     }
 
     pub fn verify(&mut self) -> Result<CredentialCreationResult, Error> {
-        let response = self.credential.response.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
+        let response = self
+            .credential
+            .response
+            .as_ref()
+            .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
         let client_data_json = base64::decode(&response.client_data_json)?;
         let client_data = serde_json::from_slice::<CollectedClientData>(client_data_json.as_slice())?;
 
-        let raw_attestation = response.attestation_object.as_ref().ok_or_else(|| Error::Other("attestation object must be present for verification".to_string()))?;
+        let raw_attestation = response
+            .attestation_object
+            .as_ref()
+            .ok_or_else(|| Error::Other("attestation object must be present for verification".to_string()))?;
         let attestation = AttestationObject::from_base64(raw_attestation)?;
 
         if client_data.request_type != WEBAUTHN_REQUEST_TYPE_CREATE {
@@ -182,7 +203,12 @@ impl CredentialCreationVerifier {
         }
 
         let has_user_verification = (attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) != 0;
-        if let Some(Some(UserVerificationRequirement::Required)) = self.context.authenticator_selection.as_ref().map(|auth_select| auth_select.user_verification.as_ref()) {
+        if let Some(Some(UserVerificationRequirement::Required)) = self
+            .context
+            .authenticator_selection
+            .as_ref()
+            .map(|auth_select| auth_select.user_verification.as_ref())
+        {
             if !has_user_verification {
                 return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
             }
@@ -194,34 +220,37 @@ impl CredentialCreationVerifier {
             }
         }
 
-        let attested_credential_data = attestation.auth_data.attested_credential_data.ok_or_else(|| Error::CredentialError(CredentialError::AttestationMissing))?;
+        let attested_credential_data = attestation
+            .auth_data
+            .attested_credential_data
+            .ok_or_else(|| Error::CredentialError(CredentialError::AttestationMissing))?;
 
         if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
             return Err(Error::CredentialError(CredentialError::KeyType));
         }
 
         match attestation.att_stmt {
-            Some(AttestationStatement::Packed(packed)) => {
-                match packed.x5c {
-                    Some(serde_cbor::Value::Array(mut cert_arr)) => {
-                        match cert_arr.pop() {
-                            Some(serde_cbor::Value::Bytes(cert)) => {
-                                let mut msg = attestation.raw_auth_data.clone();
-                                msg.append(&mut client_data_hash);
+            Some(AttestationStatement::Packed(packed)) => match packed.x5c {
+                Some(serde_cbor::Value::Array(mut cert_arr)) => match cert_arr.pop() {
+                    Some(serde_cbor::Value::Bytes(cert)) => {
+                        let mut msg = attestation.raw_auth_data.clone();
+                        msg.append(&mut client_data_hash);
 
-                                self.cert = Some(cert.clone());
-                                let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
-                                if let Err(e) = web_cert.verify_signature(get_alg_from_cose(packed.alg), msg.as_slice(), packed.sig.as_slice()) {
-                                    return Err(Error::WebPkiError(e));
-                                }
-                            }
-
-                            _ => { return Err(Error::CredentialError(CredentialError::CertificateNotSupported)); }
+                        self.cert = Some(cert.clone());
+                        let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
+                        if let Err(e) = web_cert.verify_signature(get_alg_from_cose(packed.alg), msg.as_slice(), packed.sig.as_slice()) {
+                            return Err(Error::WebPkiError(e));
                         }
                     }
-                    _ => { return Err(Error::CredentialError(CredentialError::CertificateNotSupported)); }
+
+                    _ => {
+                        return Err(Error::CredentialError(CredentialError::CertificateNotSupported));
+                    }
+                },
+                _ => {
+                    return Err(Error::CredentialError(CredentialError::CertificateNotSupported));
                 }
-            }
+            },
 
             Some(AttestationStatement::FidoU2F(fido_u2f)) => {
                 if let Some(serde_cbor::Value::Array(mut cert_arr)) = fido_u2f.x5c {
@@ -242,7 +271,9 @@ impl CredentialCreationVerifier {
                             }
                         }
 
-                        _ => { return Err(Error::CredentialError(CredentialError::CertificateMissing)); }
+                        _ => {
+                            return Err(Error::CredentialError(CredentialError::CertificateMissing));
+                        }
                     }
                 }
             }
@@ -256,12 +287,16 @@ impl CredentialCreationVerifier {
 
                             self.cert = Some(cert.clone());
                             let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
-                            if let Err(e) = web_cert.verify_signature(get_alg_from_cose(android_key.alg), msg.as_slice(), android_key.sig.as_slice()) {
+                            if let Err(e) =
+                                web_cert.verify_signature(get_alg_from_cose(android_key.alg), msg.as_slice(), android_key.sig.as_slice())
+                            {
                                 return Err(Error::WebPkiError(e));
                             }
                         }
 
-                        _ => { return Err(Error::CredentialError(CredentialError::CertificateMissing)); }
+                        _ => {
+                            return Err(Error::CredentialError(CredentialError::CertificateMissing));
+                        }
                     }
                 }
             }
@@ -324,13 +359,17 @@ impl CredentialRequestBuilder {
     }
 
     pub fn build(self) -> Result<PublicKeyCredentialRequestOptions, Error> {
-        let challenge = self.challenge.ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
+        let challenge = self
+            .challenge
+            .ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a challenge".to_string()))?;
         let mut allow_credentials = Vec::new();
-        self.allow_credentials.into_iter().for_each(|id| allow_credentials.push(PublicKeyCredentialDescriptor {
-            cred_type: PublicKeyCredentialType::PublicKey,
-            id,
-            transports: None,
-        }));
+        self.allow_credentials.into_iter().for_each(|id| {
+            allow_credentials.push(PublicKeyCredentialDescriptor {
+                cred_type: PublicKeyCredentialType::PublicKey,
+                id,
+                transports: None,
+            })
+        });
 
         Ok(PublicKeyCredentialRequestOptions {
             challenge,
@@ -361,7 +400,14 @@ pub struct CredentialRequestVerifier {
 }
 
 impl CredentialRequestVerifier {
-    pub fn new(credential: PublicKeyCredential, credential_pub: CredentialPublicKey, context: PublicKeyCredentialRequestOptions, origin: &str, user_handle: &str, sign_count: u32) -> Self {
+    pub fn new(
+        credential: PublicKeyCredential,
+        credential_pub: CredentialPublicKey,
+        context: PublicKeyCredentialRequestOptions,
+        origin: &str,
+        user_handle: &str,
+        sign_count: u32,
+    ) -> Self {
         CredentialRequestVerifier {
             credential,
             credential_pub,
@@ -373,15 +419,28 @@ impl CredentialRequestVerifier {
     }
 
     pub fn verify(&mut self) -> Result<CredentialRequestResult, Error> {
-        let response = self.credential.response.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
+        let response = self
+            .credential
+            .response
+            .as_ref()
+            .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
-        let signature = base64::decode(&response.signature.as_ref().ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?)?;
-
+        let signature = base64::decode(
+            &response
+                .signature
+                .as_ref()
+                .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?,
+        )?;
 
         let client_data_json = base64::decode(&response.client_data_json)?;
         let client_data = serde_json::from_slice::<CollectedClientData>(client_data_json.as_slice())?;
 
-        let raw_auth_data = base64::decode(response.authenticator_data.as_ref().ok_or_else(|| Error::Other("Attestation object must be present for verification".to_string()))?)?;
+        let raw_auth_data = base64::decode(
+            response
+                .authenticator_data
+                .as_ref()
+                .ok_or_else(|| Error::Other("Attestation object must be present for verification".to_string()))?,
+        )?;
         let (auth_data, raw_auth_data) = AuthenticatorData::from_vec(raw_auth_data)?;
 
         let credential_id = self.credential.id.clone();
@@ -392,17 +451,23 @@ impl CredentialRequestVerifier {
         };
 
         if !self.context.allow_credentials.contains(&descriptor) {
-            return Err(Error::CredentialError(CredentialError::Other(String::from("Specified credential is not allowed"))));
+            return Err(Error::CredentialError(CredentialError::Other(String::from(
+                "Specified credential is not allowed",
+            ))));
         }
 
         if let Some(user_handle) = &response.user_handle {
             if *user_handle != self.user_handle {
-                return Err(Error::CredentialError(CredentialError::Other(String::from("User handles do not match"))));
+                return Err(Error::CredentialError(CredentialError::Other(String::from(
+                    "User handles do not match",
+                ))));
             }
         }
 
         if client_data.request_type != WEBAUTHN_REQUEST_TYPE_GET {
-            return Err(Error::CredentialError(CredentialError::Other(String::from("Request type must be webauthn.get"))));
+            return Err(Error::CredentialError(CredentialError::Other(String::from(
+                "Request type must be webauthn.get",
+            ))));
         }
 
         if client_data.challenge != self.context.challenge {
@@ -458,10 +523,14 @@ impl CredentialRequestVerifier {
 
         let signature_alg = get_ring_alg_from_cose(self.credential_pub.alg, self.credential_pub.curve)?;
         let public_key = UnparsedPublicKey::new(signature_alg, key.as_slice());
-        public_key.verify(msg.as_slice(), signature.as_slice()).map_err(|_| Error::CredentialError(CredentialError::Other(String::from("Invalid public key or signature"))))?;
+        public_key
+            .verify(msg.as_slice(), signature.as_slice())
+            .map_err(|_| Error::CredentialError(CredentialError::Other(String::from("Invalid public key or signature"))))?;
 
         if auth_data.sign_count < self.sign_count {
-            return Err(Error::CredentialError(CredentialError::Other(String::from("Sign count is inconsistent, might be a cloned key"))));
+            return Err(Error::CredentialError(CredentialError::Other(String::from(
+                "Sign count is inconsistent, might be a cloned key",
+            ))));
         }
 
         Ok(CredentialRequestResult {
@@ -476,9 +545,13 @@ fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn Verificati
         match curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
-            _ => Err(Error::CredentialError(CredentialError::Other(String::from("Unsupported algorithm")))),
+            _ => Err(Error::CredentialError(CredentialError::Other(String::from(
+                "Unsupported algorithm",
+            )))),
         }
     } else {
-        Err(Error::CredentialError(CredentialError::Other(String::from("Unsupported algorithm"))))
+        Err(Error::CredentialError(CredentialError::Other(String::from(
+            "Unsupported algorithm",
+        ))))
     }
 }

@@ -1,10 +1,14 @@
 use std::io::{Cursor, Read, Write};
 
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt, LittleEndian};
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::u2f::error::Error;
-use crate::u2f::proto::constants::*;
-use crate::u2f::proto::raw_message::apdu::{ApduFrame, Request, Response};
+use crate::u2f::{
+    error::Error,
+    proto::{
+        constants::*,
+        raw_message::apdu::{ApduFrame, Request, Response},
+    },
+};
 
 pub struct RegisterRequest {
     pub challenge: [u8; U2F_CHAL_SIZE],
@@ -42,16 +46,24 @@ pub struct VersionResponse {
 
 pub trait Message {
     type Apdu: ApduFrame;
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized;
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized;
     fn into_apdu(self) -> Result<Self::Apdu, Error>;
 }
 
 impl Message for RegisterRequest {
     type Apdu = Request;
 
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         if apdu.command_mode != U2F_REGISTER {
-            return Err(Error::UnexpectedApdu(format!("Expecting Register Command Mode, got {}", apdu.command_mode)));
+            return Err(Error::UnexpectedApdu(format!(
+                "Expecting Register Command Mode, got {}",
+                apdu.command_mode
+            )));
         }
 
         if apdu.data_len.filter(|l| *l == 64).is_none() {
@@ -69,18 +81,12 @@ impl Message for RegisterRequest {
 
             cursor.read_exact(&mut application)?;
 
-            Ok(RegisterRequest {
-                challenge,
-                application,
-            })
+            Ok(RegisterRequest { challenge, application })
         })
     }
 
     fn into_apdu(self) -> Result<Self::Apdu, Error> {
-        let RegisterRequest {
-            challenge,
-            application,
-        } = self;
+        let RegisterRequest { challenge, application } = self;
 
         let mut data = Vec::new();
 
@@ -102,7 +108,10 @@ impl Message for RegisterRequest {
 impl Message for RegisterResponse {
     type Apdu = Response;
 
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         if apdu.status != U2F_SW_NO_ERROR {
             return Err(apdu.status.into());
         }
@@ -125,12 +134,17 @@ impl Message for RegisterResponse {
 
             cursor.read_exact(&mut key_handle_bytes[..])?;
 
-            let key_handle = String::from_utf8(key_handle_bytes).map_err(|e| Error::UnexpectedApdu(format!("Got error while parsing key_handle string: {:?}", e)))?;
+            let key_handle = String::from_utf8(key_handle_bytes)
+                .map_err(|e| Error::UnexpectedApdu(format!("Got error while parsing key_handle string: {:?}", e)))?;
 
             let mut attestation_cert = vec![0u8; data_len - cursor.position() as usize];
             cursor.read_exact(&mut attestation_cert[..])?;
 
-            let read_len_max = if attestation_cert.len() < (ASN1_MAX_FOLLOWING_LEN_BYTES + 2) {attestation_cert.len()} else {ASN1_MAX_FOLLOWING_LEN_BYTES + 2};
+            let read_len_max = if attestation_cert.len() < (ASN1_MAX_FOLLOWING_LEN_BYTES + 2) {
+                attestation_cert.len()
+            } else {
+                ASN1_MAX_FOLLOWING_LEN_BYTES + 2
+            };
 
             let cert_len = attestation_cert_length(&attestation_cert[0..read_len_max])?;
 
@@ -180,18 +194,25 @@ impl Message for RegisterResponse {
 impl Message for AuthenticateRequest {
     type Apdu = Request;
 
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         if apdu.command_mode != U2F_AUTHENTICATE {
-            return Err(Error::UnexpectedApdu(format!("Expecting Version Command Mode, got {}", apdu.command_mode)));
+            return Err(Error::UnexpectedApdu(format!(
+                "Expecting Version Command Mode, got {}",
+                apdu.command_mode
+            )));
         }
 
         let control = apdu.param_1;
 
         match control {
             U2F_AUTH_CHECK_ONLY | U2F_AUTH_ENFORCE | U2F_AUTH_DONT_ENFORCE => {}
-            _ => { return Err(Error::MalformedApdu); }
+            _ => {
+                return Err(Error::MalformedApdu);
+            }
         }
-
 
         apdu.data.ok_or(Error::MalformedApdu).and_then(move |data| {
             let mut cursor = Cursor::new(data);
@@ -222,7 +243,7 @@ impl Message for AuthenticateRequest {
             challenge,
             application,
             key_h_len,
-            key_handle
+            key_handle,
         } = self;
 
         let mut data = Vec::new();
@@ -250,7 +271,10 @@ impl Message for AuthenticateRequest {
 impl Message for AuthenticateResponse {
     type Apdu = Response;
 
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         if apdu.status != U2F_SW_NO_ERROR {
             return Err(apdu.status.into());
         }
@@ -298,9 +322,15 @@ impl Message for AuthenticateResponse {
 impl Message for VersionRequest {
     type Apdu = Request;
 
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         if apdu.command_mode != U2F_VERSION {
-            return Err(Error::UnexpectedApdu(format!("Expecting Version Command Mode, got {}", apdu.command_mode)));
+            return Err(Error::UnexpectedApdu(format!(
+                "Expecting Version Command Mode, got {}",
+                apdu.command_mode
+            )));
         }
 
         Ok(VersionRequest {})
@@ -322,14 +352,18 @@ impl Message for VersionRequest {
 impl Message for VersionResponse {
     type Apdu = Response;
 
-    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error> where Self: Sized {
+    fn from_apdu(apdu: Self::Apdu) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         if apdu.status != U2F_SW_NO_ERROR {
             return Err(apdu.status.into());
         }
 
         apdu.data.ok_or(Error::MalformedApdu).and_then(|data| {
             Ok(VersionResponse {
-                version: String::from_utf8(data).map_err(|e| Error::UnexpectedApdu(format!("Got error while parsing version string: {:?}", e)))?
+                version: String::from_utf8(data)
+                    .map_err(|e| Error::UnexpectedApdu(format!("Got error while parsing version string: {:?}", e)))?,
             })
         })
     }
@@ -347,13 +381,15 @@ pub mod apdu {
 
     use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-    use crate::u2f::proto::constants::{MAX_RESPONSE_LEN_EXTENDED, MAX_RESPONSE_LEN_SHORT};
-    use crate::u2f::error::Error;
+    use crate::u2f::{
+        error::Error,
+        proto::constants::{MAX_RESPONSE_LEN_EXTENDED, MAX_RESPONSE_LEN_SHORT},
+    };
 
     pub trait ApduFrame {
         fn read_from(slice: &[u8]) -> Result<Self, Error>
-            where
-                Self: Sized;
+        where
+            Self: Sized;
         fn write_to<W: Write>(self, writer: &mut W) -> Result<(), Error>;
         fn get_frame_size(&self) -> usize;
     }
@@ -371,8 +407,9 @@ pub mod apdu {
 
     impl ApduFrame for Request {
         fn read_from(slice: &[u8]) -> Result<Self, Error>
-            where
-                Self: Sized {
+        where
+            Self: Sized,
+        {
             let slice_len = slice.len();
             let mut reader = Cursor::new(slice);
             let class_byte = reader.read_u8()?;
@@ -504,7 +541,7 @@ pub mod apdu {
                 param_2,
                 data_len,
                 data,
-                max_rsp_len
+                max_rsp_len,
             } = self;
 
             writer.write_u8(class_byte)?;
@@ -570,16 +607,15 @@ pub mod apdu {
 
     impl Response {
         pub fn from_status(sw: u16) -> Self {
-            Response {
-                data: None,
-                status: sw
-            }
+            Response { data: None, status: sw }
         }
     }
 
     impl ApduFrame for Response {
-        fn read_from(slice: &[u8]) -> Result<Self, Error> where
-            Self: Sized {
+        fn read_from(slice: &[u8]) -> Result<Self, Error>
+        where
+            Self: Sized,
+        {
             let slice_len = slice.len();
 
             if slice_len < 2 {
@@ -590,23 +626,13 @@ pub mod apdu {
 
             let status = (&slice[slice_len - 2..slice_len]).read_u16::<BigEndian>()?;
 
-            let data = if rsp_data.len() > 0 {
-                Some(rsp_data.to_vec())
-            } else {
-                None
-            };
+            let data = if rsp_data.len() > 0 { Some(rsp_data.to_vec()) } else { None };
 
-            Ok(Response {
-                data,
-                status,
-            })
+            Ok(Response { data, status })
         }
 
         fn write_to<W: Write + WriteBytesExt>(self, writer: &mut W) -> Result<(), Error> {
-            let Response {
-                data,
-                status,
-            } = self;
+            let Response { data, status } = self;
 
             if let Some(data) = data {
                 writer.write_all(&data[..])?;
@@ -627,8 +653,8 @@ pub mod apdu {
 
 pub trait MessageFrame {
     fn read_from<R: Read>(reader: &mut R) -> Result<Self, Error>
-        where
-            Self: Sized;
+    where
+        Self: Sized;
     fn write_to<W: Write>(self, writer: &mut W) -> Result<(), Error>;
     fn get_size(&self) -> usize;
 }
@@ -645,7 +671,8 @@ pub fn attestation_cert_length(asn1: &[u8]) -> Result<usize, Error> {
     }
 
     let len = asn1[1];
-    if len & ASN1_DEFINITE_SHORT_MASK == 0 { // check if len is definite short (len <= 127)
+    if len & ASN1_DEFINITE_SHORT_MASK == 0 {
+        // check if len is definite short (len <= 127)
         return Ok(len as usize);
     }
 
@@ -655,14 +682,16 @@ pub fn attestation_cert_length(asn1: &[u8]) -> Result<usize, Error> {
     }
 
     if following_bytes as usize + 2 >= asn1.len() {
-        return Err(Error::AsnFormatError("Invalid ans len, too many following len bytes expected".to_string()));
+        return Err(Error::AsnFormatError(
+            "Invalid ans len, too many following len bytes expected".to_string(),
+        ));
     }
 
     let mut len: usize = 0;
     for i in 0..following_bytes as usize {
         len = len * 256 + (asn1[2 + i] as usize);
         if len > U2F_MAX_ATT_CERT_SIZE {
-            return Err(Error::Other("Attestation certificate don't meet len requirements".to_string()))
+            return Err(Error::Other("Attestation certificate don't meet len requirements".to_string()));
         }
     }
 

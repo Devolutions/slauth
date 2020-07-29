@@ -3,14 +3,16 @@ pub fn main() {
     {
         use saphir::{BasicController, Method, Middleware, RequestContinuation, Server, SyncRequest, SyncResponse};
         use serde_json::json;
-        use slauth::webauthn::error::{CredentialError as CredE, Error::CredentialError};
-        use slauth::webauthn::proto::constants::WEBAUTHN_CHALLENGE_LENGTH;
-        use slauth::webauthn::proto::raw_message::CredentialPublicKey;
-        use slauth::webauthn::proto::web_message::{PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions};
-        use slauth::webauthn::server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier};
-        use std::collections::HashMap;
-        use std::str::FromStr;
-        use std::sync::RwLock;
+        use slauth::webauthn::{
+            error::{CredentialError as CredE, Error::CredentialError},
+            proto::{
+                constants::WEBAUTHN_CHALLENGE_LENGTH,
+                raw_message::CredentialPublicKey,
+                web_message::{PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions},
+            },
+            server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier},
+        };
+        use std::{collections::HashMap, str::FromStr, sync::RwLock};
         use uuid::Uuid;
 
         let server = Server::builder();
@@ -55,7 +57,9 @@ pub fn main() {
 
             pub fn register_request(&self, _req: &SyncRequest, res: &mut SyncResponse) {
                 let uuid = base64::encode_config(
-                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(),
+                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
+                        .expect("should be ok")
+                        .as_bytes(),
                     base64::URL_SAFE_NO_PAD,
                 );
                 let builder = CredentialCreationBuilder::new()
@@ -82,7 +86,9 @@ pub fn main() {
             pub fn complete_register(&self, req: &SyncRequest, _res: &mut SyncResponse) {
                 let value = serde_json::from_str::<PublicKeyCredential>(&String::from_utf8(req.body().clone()).unwrap());
                 let uuid = base64::encode_config(
-                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(),
+                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
+                        .expect("should be ok")
+                        .as_bytes(),
                     base64::URL_SAFE_NO_PAD,
                 );
                 if let Ok(cred) = value {
@@ -100,7 +106,9 @@ pub fn main() {
                     .rp("localhost".to_string())
                     .challenge(gen_challenge(WEBAUTHN_CHALLENGE_LENGTH));
                 let uuid = base64::encode_config(
-                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(),
+                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
+                        .expect("should be ok")
+                        .as_bytes(),
                     base64::URL_SAFE_NO_PAD,
                 );
                 for (cred, _) in self.creds.read().unwrap().iter() {
@@ -122,7 +130,9 @@ pub fn main() {
             pub fn complete_sign(&self, req: &SyncRequest, res: &mut SyncResponse) {
                 let value = serde_json::from_str::<PublicKeyCredential>(&String::from_utf8(req.body().clone()).unwrap());
                 let uuid = base64::encode_config(
-                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7").expect("should be ok").as_bytes(),
+                    Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
+                        .expect("should be ok")
+                        .as_bytes(),
                     base64::URL_SAFE_NO_PAD,
                 );
                 let result = if let Ok(cred) = value {
@@ -148,7 +158,9 @@ pub fn main() {
                         Err(CredentialError(CredE::Other("Context not found".to_string())))
                     }
                 } else {
-                    Err(CredentialError(CredE::Other("Public key credential could not be parsed".to_string())))
+                    Err(CredentialError(CredE::Other(
+                        "Public key credential could not be parsed".to_string(),
+                    )))
                 };
 
                 match result {

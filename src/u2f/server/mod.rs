@@ -2,13 +2,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ring::signature;
 use sha2::{Digest, Sha256};
-use webpki::{ECDSA_P256_SHA256, EndEntityCert};
+use webpki::{EndEntityCert, ECDSA_P256_SHA256};
 
-use crate::u2f::error::Error;
-use crate::u2f::proto::constants::U2F_V2_VERSION_STR;
-use crate::u2f::proto::raw_message;
-use crate::u2f::proto::raw_message::{apdu::ApduFrame, Message};
-use crate::u2f::proto::web_message::*;
+use crate::u2f::{
+    error::Error,
+    proto::{
+        constants::U2F_V2_VERSION_STR,
+        raw_message,
+        raw_message::{apdu::ApduFrame, Message},
+        web_message::*,
+    },
+};
 
 static REQUESTS_IDS: AtomicU64 = AtomicU64::new(0);
 
@@ -65,25 +69,31 @@ impl U2fRequestBuilder {
             challenge,
             timeout,
             rtype,
-            registered_keys
+            registered_keys,
         } = self;
 
-        let challenge = base64::encode_config(challenge.as_ref().ok_or_else(|| Error::Other("Unable to build a U2F request without a challenge".to_string()))?, base64::URL_SAFE_NO_PAD);
+        let challenge = base64::encode_config(
+            challenge
+                .as_ref()
+                .ok_or_else(|| Error::Other("Unable to build a U2F request without a challenge".to_string()))?,
+            base64::URL_SAFE_NO_PAD,
+        );
 
         let data = match rtype {
-            U2fRequestType::Register => {
-                Request::Register(U2fRegisterRequest {
-                    register_requests: vec![RegisterRequest { version: U2F_V2_VERSION_STR.to_string(), challenge }],
-                    registered_keys: registered_keys.unwrap_or_else(|| vec![])
-                })
-            }
+            U2fRequestType::Register => Request::Register(U2fRegisterRequest {
+                register_requests: vec![RegisterRequest {
+                    version: U2F_V2_VERSION_STR.to_string(),
+                    challenge,
+                }],
+                registered_keys: registered_keys.unwrap_or_else(|| vec![]),
+            }),
             U2fRequestType::Sign => {
-
-                let registered_keys = registered_keys.ok_or_else(|| Error::Other("Unable to build a U2F Sign request without at least one registered key".to_string()))?;
+                let registered_keys = registered_keys
+                    .ok_or_else(|| Error::Other("Unable to build a U2F Sign request without at least one registered key".to_string()))?;
 
                 Request::Sign(U2fSignRequest {
                     challenge,
-                    registered_keys
+                    registered_keys,
                 })
             }
         };
@@ -93,7 +103,7 @@ impl U2fRequestBuilder {
             app_id,
             timeout_seconds: timeout,
             request_id: Some(REQUESTS_IDS.fetch_add(1, Ordering::Relaxed)),
-            data
+            data,
         })
     }
 }
@@ -140,17 +150,20 @@ impl U2fRegisterResponse {
         } = &self;
 
         if version != U2F_V2_VERSION_STR {
-            return Err(Error::Version)
+            return Err(Error::Version);
         }
 
         // Validate that input is consistent with what's expected
-        let registration_data_bytes = base64::decode_config(registration_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let registration_data_bytes =
+            base64::decode_config(registration_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
         let raw_rsp = raw_message::apdu::Response::read_from(&registration_data_bytes)?;
         let raw_u2f_reg = raw_message::RegisterResponse::from_apdu(raw_rsp)?;
 
-        let client_data_bytes = base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let client_data_bytes =
+            base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
 
-        let client_data: ClientData = serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
+        let client_data: ClientData =
+            serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
 
         // Validate signature
         let attestation_cert = EndEntityCert::from(&raw_u2f_reg.attestation_cert)?;
@@ -181,7 +194,7 @@ impl U2fRegisterResponse {
             app_id: client_data.origin,
             key_handle: raw_u2f_reg.key_handle,
             pub_key: raw_u2f_reg.user_public_key.to_vec(),
-            attestation_cert: raw_u2f_reg.attestation_cert
+            attestation_cert: raw_u2f_reg.attestation_cert,
         })
     }
 }
@@ -192,7 +205,7 @@ impl Registration {
             version: self.version.clone(),
             key_handle: self.key_handle.clone(),
             transports: None,
-            app_id: Some(self.app_id.clone())
+            app_id: Some(self.app_id.clone()),
         }
     }
 }
@@ -206,13 +219,16 @@ impl U2fSignResponse {
             ..
         } = &self;
 
-        let signature_data_byte = base64::decode_config(signature_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let signature_data_byte =
+            base64::decode_config(signature_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
         let raw_rsp = raw_message::apdu::Response::read_from(&signature_data_byte)?;
         let raw_u2f_sign = raw_message::AuthenticateResponse::from_apdu(raw_rsp)?;
 
-        let client_data_bytes = base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let client_data_bytes =
+            base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
 
-        let client_data: ClientData = serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
+        let client_data: ClientData =
+            serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
 
         let mut hasher = Sha256::new();
 
@@ -238,6 +254,5 @@ impl U2fSignResponse {
         public_key.verify(signature_data.as_slice(), raw_u2f_sign.signature.as_slice())?;
 
         Ok((raw_u2f_sign.user_presence & 0x01) == 0x01)
-
     }
 }
