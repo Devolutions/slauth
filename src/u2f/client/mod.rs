@@ -370,10 +370,7 @@ pub mod client {
         #[no_mangle]
         pub unsafe extern "C" fn client_web_response_signing_key(rsp: *mut ClientWebResponse) -> *mut SigningKey {
             let rsp = &mut *rsp;
-            rsp.signing_key
-                .take()
-                .map(|s| Box::into_raw(Box::new(s)))
-                .unwrap_or_else(null_mut)
+            rsp.signing_key.take().map(|s| Box::into_raw(Box::new(s))).unwrap_or_else(null_mut)
         }
 
         #[no_mangle]
