@@ -15,7 +15,6 @@ stages:
         steps:
           - script: |
               rustup update
-              mkdir .cargo
             displayName: "Install rust"
           - script: |
               cargo fmt --all -- --check
