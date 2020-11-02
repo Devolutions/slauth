@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["richer <richer.arc@gmail.com>", "LucFauvel <luc.fauvel@hotmail.com>"]
 edition = "2018"
 description = "oath HOTP and TOTP complient implementation"
@@ -43,7 +43,7 @@ serde_repr = { version = "0.1.4", optional = true }
 serde_derive = { version = "1.0", optional = true }
 serde_bytes = { version = "0.11.1", optional = true }
 serde_json = { version = "1.0", optional = true }
-serde_cbor = { version = "0.10.1", optional = true }
+serde_cbor = { version = "0.11.1", optional = true }
 webpki = { version = "0.21.0", optional = true }
 bytes = { version = "0.4.12", optional = true }
 
@@ -56,7 +56,7 @@ wasm-bindgen-test = "0.3.10"
 
 [dev-dependencies]
 serde_json = "1.0.39"
-serde_cbor = "0.10.1"
+serde_cbor = "0.11.1"
 saphir = "0.9.4"
 uuid = "0.7.4"
 rand = "0.5"
