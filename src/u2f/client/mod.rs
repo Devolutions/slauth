@@ -5,6 +5,7 @@ pub struct SigningKey {
     pub private_key: Vec<u8>,
 }
 
+#[allow(clippy::module_inception)]
 pub mod client {
     use sha2::{Digest, Sha256};
 
@@ -219,7 +220,7 @@ pub mod client {
             req.app_id
                 .as_ref()
                 .map(|s| strings::string_to_c_char(s.to_owned()))
-                .unwrap_or_else(|| null_mut())
+                .unwrap_or_else(null_mut)
         }
 
         #[no_mangle]
@@ -244,8 +245,8 @@ pub mod client {
 
                         None
                     })
-                    .map(|s| strings::string_to_c_char(s))
-                    .unwrap_or_else(|| null_mut())
+                    .map(strings::string_to_c_char)
+                    .unwrap_or_else(null_mut)
             } else {
                 null_mut()
             }
@@ -261,7 +262,7 @@ pub mod client {
         ) -> *mut ClientWebResponse {
             let req = &*req;
             let signing_key = &*signing_key;
-            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(|| String::new());
+            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(String::new);
 
             let request_id = req.request_id;
 
@@ -312,7 +313,7 @@ pub mod client {
             let attestation_cert = std::slice::from_raw_parts(attestation_cert, attestation_cert_len as usize);
             let attestation_key = std::slice::from_raw_parts(attestation_key, attestation_key_len as usize);
 
-            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(|| String::new());
+            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(String::new);
 
             let request_id = req.request_id;
             let mut signing_key = None;
@@ -372,7 +373,7 @@ pub mod client {
             rsp.signing_key
                 .take()
                 .map(|s| Box::into_raw(Box::new(s)))
-                .unwrap_or_else(|| null_mut())
+                .unwrap_or_else(null_mut)
         }
 
         #[no_mangle]
@@ -416,7 +417,7 @@ pub mod client {
                         private_key: key,
                     }))
                 })
-                .unwrap_or_else(|| null_mut())
+                .unwrap_or_else(null_mut)
         }
     }
 }

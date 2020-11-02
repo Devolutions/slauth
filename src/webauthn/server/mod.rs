@@ -23,6 +23,7 @@ use crate::webauthn::{
     },
 };
 
+#[derive(Default)]
 pub struct CredentialCreationBuilder {
     challenge: Option<String>,
     user: Option<User>,
@@ -33,13 +34,7 @@ pub struct CredentialCreationBuilder {
 
 impl CredentialCreationBuilder {
     pub fn new() -> Self {
-        CredentialCreationBuilder {
-            challenge: None,
-            user: None,
-            rp: None,
-            user_verification_requirement: None,
-            exclude_credentials: vec![],
-        }
+        CredentialCreationBuilder::default()
     }
 
     pub fn challenge(mut self, challenge: String) -> Self {
@@ -155,7 +150,7 @@ impl CredentialCreationVerifier {
 
     pub fn get_cert(&self) -> Result<EndEntityCert, Error> {
         if let Some(cert) = &self.cert {
-            webpki::EndEntityCert::from(cert.as_slice()).map_err(|e| Error::WebPkiError(e))
+            webpki::EndEntityCert::from(cert.as_slice()).map_err(Error::WebPkiError)
         } else {
             Err(Error::Other("certificate is missing or has not been verified yet".to_string()))
         }
@@ -256,7 +251,7 @@ impl CredentialCreationVerifier {
                 if let Some(serde_cbor::Value::Array(mut cert_arr)) = fido_u2f.x5c {
                     match cert_arr.pop() {
                         Some(serde_cbor::Value::Bytes(cert)) => {
-                            let mut public_key_u2f = attested_credential_data.credential_public_key.coords.to_vec().clone();
+                            let mut public_key_u2f = attested_credential_data.credential_public_key.coords.to_vec();
                             let mut msg = Vec::new();
                             msg.push(0x00);
                             msg.append(&mut attestation.auth_data.rp_id_hash.to_vec());
@@ -321,6 +316,7 @@ pub struct CredentialRequestResult {
     pub has_user_verification: bool,
 }
 
+#[derive(Default)]
 pub struct CredentialRequestBuilder {
     challenge: Option<String>,
     rp: Option<String>,
@@ -330,12 +326,7 @@ pub struct CredentialRequestBuilder {
 
 impl CredentialRequestBuilder {
     pub fn new() -> Self {
-        CredentialRequestBuilder {
-            challenge: None,
-            rp: None,
-            allow_credentials: Vec::new(),
-            user_verification_requirement: None,
-        }
+        CredentialRequestBuilder::default()
     }
 
     pub fn challenge(mut self, challenge: String) -> Self {

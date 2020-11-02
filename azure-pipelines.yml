@@ -1,0 +1,47 @@
+trigger:
+  - master
+
+pr:
+  - master
+
+stages:
+  - stage: RustCodeFormattingCheck
+    dependsOn: [ ]
+    jobs:
+      - job: Linux
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - script: |
+              rustup update
+              mkdir .cargo
+            displayName: "Install rust"
+          - script: |
+              cargo fmt --all -- --check
+            displayName: "Check Format"
+          - script: |
+              cargo clippy -- --D warnings
+            displayName: "Check Clippy"
+  - stage: WebAssembly
+    dependsOn: [ ]
+    jobs:
+      - job: Build & pack wasm
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - script: |
+              rustup update
+              cargo install wasm-pack
+            displayName: "Update rust and install wasm-pack"
+          - script: |
+              sh ./wasm/build.sh
+            displayName: "Generating npm package"
+          - task: CopyFiles@2
+            inputs:
+              contents: 'dist/**'
+              targetFolder: $(Build.ArtifactStagingDirectory)
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: $(Build.ArtifactStagingDirectory)
+              artifactName: WebAssembly

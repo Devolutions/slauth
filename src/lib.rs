@@ -13,6 +13,9 @@ pub mod u2f;
 #[cfg(feature = "webauthn-server")]
 pub mod webauthn;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 #[cfg(feature = "native-bindings")]
 pub mod strings {
     use std::{
@@ -20,6 +23,8 @@ pub mod strings {
         os::raw::c_char,
     };
 
+    /// # Safety
+    /// Needed to cast string in FFY context
     pub unsafe fn c_char_to_string_checked(cchar: *const c_char) -> Option<String> {
         let c_str = CStr::from_ptr(cchar);
         match c_str.to_str() {
@@ -28,6 +33,8 @@ pub mod strings {
         }
     }
 
+    /// # Safety
+    /// Needed to cast string in FFY context
     pub unsafe fn c_char_to_string(cchar: *const c_char) -> String {
         let c_str = CStr::from_ptr(cchar);
         let r_str = match c_str.to_str() {
@@ -43,6 +50,8 @@ pub mod strings {
             .into_raw()
     }
 
+    /// # Safety
+    /// Needed to cast string in FFY context
     pub unsafe fn mut_c_char_to_string(cchar: *mut c_char) -> String {
         let c_string = if cchar.is_null() {
             CString::from_vec_unchecked(vec![])

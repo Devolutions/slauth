@@ -3,6 +3,7 @@ use super::*;
 pub const HOTP_DEFAULT_COUNTER_VALUE: u64 = 0;
 pub const HOTP_DEFAULT_RESYNC_VALUE: u16 = 2;
 
+#[derive(Default)]
 pub struct HOTPBuilder {
     alg: Option<HashesAlgorithm>,
     counter: Option<u64>,
@@ -13,13 +14,7 @@ pub struct HOTPBuilder {
 
 impl HOTPBuilder {
     pub fn new() -> Self {
-        HOTPBuilder {
-            alg: None,
-            counter: None,
-            resync: None,
-            digits: None,
-            secret: None,
-        }
+        HOTPBuilder::default()
     }
 
     pub fn algorithm(mut self, alg: HashesAlgorithm) -> Self {
@@ -57,7 +52,7 @@ impl HOTPBuilder {
         } = self;
 
         let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
-        let secret = secret.unwrap_or_else(|| vec![]);
+        let secret = secret.unwrap_or_else(Vec::new);
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         HOTPContext {
@@ -264,7 +259,7 @@ mod native_bindings {
         let uri_str = strings::c_char_to_string(uri);
         Box::into_raw(
             HOTPContext::from_uri(&uri_str)
-                .map(|h| Box::new(h))
+                .map(Box::new)
                 .unwrap_or_else(|_| Box::from_raw(null_mut())),
         )
     }
@@ -278,9 +273,9 @@ mod native_bindings {
     pub unsafe extern "C" fn hotp_to_uri(hotp: *mut HOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
         let hotp = &*hotp;
         let label = strings::c_char_to_string(label);
-        let label_opt = if label.len() > 0 { Some(label.as_str()) } else { None };
+        let label_opt = if !label.is_empty() { Some(label.as_str()) } else { None };
         let issuer = strings::c_char_to_string(issuer);
-        let issuer_opt = if issuer.len() > 0 { Some(issuer.as_str()) } else { None };
+        let issuer_opt = if !issuer.is_empty() { Some(issuer.as_str()) } else { None };
         strings::string_to_c_char(hotp.to_uri(label_opt, issuer_opt))
     }
 

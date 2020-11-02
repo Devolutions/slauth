@@ -6,6 +6,7 @@ pub const TOTP_DEFAULT_PERIOD_VALUE: u64 = 30;
 pub const TOTP_DEFAULT_BACK_RESYNC_VALUE: u64 = 1;
 pub const TOTP_DEFAULT_FORWARD_RESYNC_VALUE: u64 = 1;
 
+#[derive(Default)]
 pub struct TOTPBuilder {
     alg: Option<HashesAlgorithm>,
     period: Option<u64>,
@@ -18,15 +19,7 @@ pub struct TOTPBuilder {
 
 impl TOTPBuilder {
     pub fn new() -> Self {
-        TOTPBuilder {
-            alg: None,
-            period: None,
-            backward_resync: None,
-            forward_resync: None,
-            initial_time: None,
-            digits: None,
-            secret: None,
-        }
+        TOTPBuilder::default()
     }
 
     pub fn algorithm(mut self, alg: HashesAlgorithm) -> Self {
@@ -72,7 +65,7 @@ impl TOTPBuilder {
         } = self;
 
         let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
-        let secret = secret.unwrap_or_else(|| vec![]);
+        let secret = secret.unwrap_or_else(Vec::new);
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         TOTPContext {
@@ -89,6 +82,7 @@ impl TOTPBuilder {
     }
 }
 
+#[derive(Clone)]
 pub struct TOTPContext {
     alg: HashesAlgorithm,
     period: u64,
@@ -318,7 +312,7 @@ mod native_bindings {
         let uri_str = strings::c_char_to_string(uri);
         Box::into_raw(
             TOTPContext::from_uri(&uri_str)
-                .map(|h| Box::new(h))
+                .map(Box::new)
                 .unwrap_or_else(|_| Box::from_raw(null_mut())),
         )
     }
@@ -332,9 +326,9 @@ mod native_bindings {
     pub unsafe extern "C" fn totp_to_uri(totp: *mut TOTPContext, label: *const c_char, issuer: *const c_char) -> *mut c_char {
         let totp = &*totp;
         let label = strings::c_char_to_string(label);
-        let label_opt = if label.len() > 0 { Some(label.as_str()) } else { None };
+        let label_opt = if !label.is_empty() { Some(label.as_str()) } else { None };
         let issuer = strings::c_char_to_string(issuer);
-        let issuer_opt = if issuer.len() > 0 { Some(issuer.as_str()) } else { None };
+        let issuer_opt = if !issuer.is_empty() { Some(issuer.as_str()) } else { None };
         strings::string_to_c_char(totp.to_uri(label_opt, issuer_opt))
     }
 

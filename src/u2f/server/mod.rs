@@ -85,7 +85,7 @@ impl U2fRequestBuilder {
                     version: U2F_V2_VERSION_STR.to_string(),
                     challenge,
                 }],
-                registered_keys: registered_keys.unwrap_or_else(|| vec![]),
+                registered_keys: registered_keys.unwrap_or_else(Vec::new),
             }),
             U2fRequestType::Sign => {
                 let registered_keys = registered_keys
@@ -124,10 +124,7 @@ impl U2fResponse {
     }
 
     pub fn is_error_response(&self) -> bool {
-        match self.response_data {
-            Response::Error(_) => true,
-            _ => false,
-        }
+        matches!(self.response_data, Response::Error(_))
     }
 
     pub fn as_error_response(&self) -> Option<&ClientError> {

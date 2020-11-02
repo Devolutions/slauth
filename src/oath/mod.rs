@@ -19,6 +19,7 @@ pub enum HashesAlgorithm {
     SHA512,
 }
 
+#[derive(Clone)]
 pub(crate) struct MacHashKey {
     secret: Vec<u8>,
     alg: HashesAlgorithm,

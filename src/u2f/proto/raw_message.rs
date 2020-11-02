@@ -551,7 +551,7 @@ pub mod apdu {
 
             let mut l_e_offset = true;
 
-            if let Some((data_len, data)) = data_len.and_then(|l| data.and_then(move |d| Some((l, d)))) {
+            if let Some((data_len, data)) = data_len.and_then(|l| data.map(move |d| (l, d))) {
                 l_e_offset = false;
                 writer.write_u8(0x00)?;
                 writer.write_u16::<BigEndian>(data_len as u16)?;
@@ -626,7 +626,7 @@ pub mod apdu {
 
             let status = (&slice[slice_len - 2..slice_len]).read_u16::<BigEndian>()?;
 
-            let data = if rsp_data.len() > 0 { Some(rsp_data.to_vec()) } else { None };
+            let data = if !rsp_data.is_empty() { Some(rsp_data.to_vec()) } else { None };
 
             Ok(Response { data, status })
         }
