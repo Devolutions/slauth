@@ -102,3 +102,19 @@ pub(crate) fn decode_hex_or_base_32(encoded: &str) -> Option<Vec<u8>> {
     // Try base32 first then is it does not follows RFC4648, try HEX
     base32::decode(base32::Alphabet::RFC4648 { padding: false }, encoded).or_else(|| hex::decode(encoded).ok())
 }
+
+#[cfg(target_arch = "wasm32")]
+pub fn get_time() -> u64 {
+    let dt = js_sys::Date::new_0();
+    let ut: f64 = dt.get_time();
+    if ut < 0.0 {
+        0
+    } else {
+        (ut.floor() as u64) / 1000
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_time() -> u64 {
+    time::OffsetDateTime::now_utc().timestamp() as u64
+}

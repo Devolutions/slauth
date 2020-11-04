@@ -1,5 +1,3 @@
-use time::now_utc;
-
 use super::*;
 
 pub const TOTP_DEFAULT_PERIOD_VALUE: u64 = 30;
@@ -110,7 +108,7 @@ impl TOTPContext {
     /// Note that elapsed represent the time between the actual time you want in to be generated for and now.
     /// E.g. if you want a code valid exactly 68 sec ago, elapsed value would be 68
     pub fn gen_with(&self, elapsed: u64) -> String {
-        let mut counter = ((now_utc().to_timespec().sec as u64 - elapsed - self.initial_time) / self.period) as u64;
+        let mut counter = ((get_time() - elapsed - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
@@ -137,7 +135,7 @@ impl TOTPContext {
             return false;
         }
 
-        let mut counter = ((now_utc().to_timespec().sec as u64 - self.initial_time) / self.period) as u64;
+        let mut counter = ((get_time() - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
