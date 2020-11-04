@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.6.2"
+version = "0.6.3"
 authors = ["richer <richer.arc@gmail.com>", "LucFauvel <luc.fauvel@hotmail.com>"]
 edition = "2018"
 description = "oath HOTP and TOTP complient implementation"
@@ -48,11 +48,11 @@ webpki = { version = "0.21.0", optional = true }
 bytes = { version = "0.4.12", optional = true }
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
-wasm-bindgen = { version = "=0.2.68", features = ["serde-serialize"] }
-js-sys = "=0.3.45"
+wasm-bindgen = { version = "=0.2.60" }
+js-sys = "=0.3.37"
 
 [target.'cfg(target_arch="wasm32")'.dev-dependencies]
-wasm-bindgen-test = "=0.3.18"
+wasm-bindgen-test = "=0.3.10"
 
 [target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
 saphir = "0.9.4"
@@ -64,5 +64,5 @@ uuid = "0.7.4"
 rand = "0.5"
 bytes = "0.4.12"
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+#[package.metadata.wasm-pack.profile.release]
+#wasm-opt = false
