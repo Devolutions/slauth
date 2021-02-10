@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/crates/l/slauth.svg)](https://github.com/devolutions/slauth/blob/master/LICENSE)
 [![dependency status](https://deps.rs/repo/github/devolutions/slauth/status.svg)](https://deps.rs/repo/github/devolutions/slauth)
 
-## Slauth is a Rust only, OpenSource implementation of Multiple authenticator utils / specification
+## Slauth is a Rust only, OpenSource implementation of Multiple authenticator utils / specifications
 
 ### Current Implementation Status
 Status is describe by : ✔ as implemented, ❌ as not implemented and ⚠️ as partially implemented.
