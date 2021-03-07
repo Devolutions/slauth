@@ -101,14 +101,32 @@ impl TOTPContext {
 
     /// Generate the current TOTP code corresponding to the counter value
     pub fn gen(&self) -> String {
-        self.gen_with(0)
+        self.gen_past(0)
     }
 
     /// Generate the current TOTP code corresponding to the counter value
     /// Note that elapsed represent the time between the actual time you want in to be generated for and now.
     /// E.g. if you want a code valid exactly 68 sec ago, elapsed value would be 68
+    pub fn gen_past(&self, elapsed: u64) -> String {
+        self.gen_time_diff(get_time() - elapsed)
+    }
+
+    /// Generate the current TOTP code corresponding to the counter value
+    /// Note that elapsed represent the time between the actual time you want in to be generated for and now.
+    /// E.g. if you want a code valid exactly 68 sec ago, elapsed value would be 68
+    /// Deprecated: Use gen_past
     pub fn gen_with(&self, elapsed: u64) -> String {
-        let mut counter = ((get_time() - elapsed - self.initial_time) / self.period) as u64;
+        self.gen_past(elapsed)
+    }
+
+    /// Generate a TOTP code in the future
+    pub fn gen_future(&self, seconds: u64) -> String {
+        self.gen_time_diff(get_time() + seconds)
+    }
+
+    /// Generate a TOTP code in a given time
+    fn gen_time_diff(&self, time: u64) -> String {
+        let mut counter = ((time - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
             d if d > 0 => counter += d.abs() as u64,
@@ -393,14 +411,27 @@ fn test_clock_drifting() {
 }
 
 #[test]
-fn test_gen_with() {
+fn test_gen_past() {
     let totp = TOTPContext::from_uri("otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example").unwrap();
 
     let code1 = totp.gen();
 
     std::thread::sleep(std::time::Duration::from_secs(31));
 
-    let code2 = totp.gen_with(31);
+    let code2 = totp.gen_past(31);
+
+    assert_eq!(code1, code2);
+}
+
+#[test]
+fn test_gen_future() {
+    let totp = TOTPContext::from_uri("otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example").unwrap();
+
+    let code1 = totp.gen_future(31);
+
+    std::thread::sleep(std::time::Duration::from_secs(31));
+
+    let code2 = totp.gen();
 
     assert_eq!(code1, code2);
 }
