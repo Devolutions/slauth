@@ -116,5 +116,5 @@ pub fn get_time() -> u64 {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_time() -> u64 {
-    time::OffsetDateTime::now_utc().timestamp() as u64
+    time::OffsetDateTime::now_utc().unix_timestamp() as u64
 }
