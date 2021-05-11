@@ -12,7 +12,7 @@ keywords = ["TOTP", "HOTP", "2FA", "MFA", "WebAuthn"]
 license = "MIT"
 
 [target.'cfg(target_os="android")'.dependencies]
-jni = { version = "0.12", default-features = false }
+jni = { version = "0.12", default-features = false, optional = true }
 
 [lib]
 name = "slauth"
@@ -25,6 +25,7 @@ u2f-server = ["u2f", "webpki"]
 u2f = ["auth-base", "untrusted",  "serde_repr", ]
 webauthn-server = [ "auth-base", "bytes", "serde_cbor"]
 auth-base = ["base64", "byteorder", "ring", "serde", "serde_derive", "serde_json", "serde_bytes"]
+android = ["jni"]
 
 [dependencies]
 sha2 = "0.8.0"
