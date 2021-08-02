@@ -130,7 +130,7 @@ impl U2FSToken {
                 AuthenticateRequest::from_apdu(req).and_then(|auth| self.authenticate(auth, timeout).and_then(|rsp| rsp.into_apdu()))
             }
             U2F_VERSION => VersionRequest::from_apdu(req).and_then(|vers| self.version(vers).into_apdu()),
-            com if com >= U2F_VENDOR_FIRST && com <= U2F_VENDOR_LAST => Err(Error::U2FErrorCode(U2F_SW_INS_NOT_SUPPORTED)),
+            com if (U2F_VENDOR_FIRST..=U2F_VENDOR_LAST).contains(&com) => Err(Error::U2FErrorCode(U2F_SW_INS_NOT_SUPPORTED)),
             _ => Err(Error::U2FErrorCode(U2F_SW_COMMAND_NOT_ALLOWED)),
         };
 

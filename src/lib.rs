@@ -37,10 +37,7 @@ pub mod strings {
     /// Needed to cast string in FFY context
     pub unsafe fn c_char_to_string(cchar: *const c_char) -> String {
         let c_str = CStr::from_ptr(cchar);
-        let r_str = match c_str.to_str() {
-            Ok(string) => string,
-            Err(_) => "",
-        };
+        let r_str = c_str.to_str().unwrap_or("");
         r_str.to_string()
     }
 

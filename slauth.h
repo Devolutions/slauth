@@ -225,9 +225,9 @@ bool hotp_validate_current(HOTPContext *hotp, const char *code);
 
 TOTPContext *totp_from_uri(const char *uri);
 
-HOTPContext *hotp_from_parts(const uint8_t *secret,
+TOTPContext *totp_from_parts(const uint8_t *secret,
                              uintptr_t secret_len,
-                             uintptr_t counter,
+                             uintptr_t period,
                              uintptr_t digits,
                              uintptr_t algo);
 

@@ -51,15 +51,15 @@ impl HOTPBuilder {
             secret,
         } = self;
 
-        let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
+        let alg = alg.unwrap_or(OTP_DEFAULT_ALG_VALUE);
         let secret = secret.unwrap_or_else(Vec::new);
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         HOTPContext {
             alg,
-            counter: counter.unwrap_or_else(|| HOTP_DEFAULT_COUNTER_VALUE),
-            resync: resync.unwrap_or_else(|| HOTP_DEFAULT_RESYNC_VALUE),
-            digits: digits.unwrap_or_else(|| OTP_DEFAULT_DIGITS_VALUE),
+            counter: counter.unwrap_or(HOTP_DEFAULT_COUNTER_VALUE),
+            resync: resync.unwrap_or(HOTP_DEFAULT_RESYNC_VALUE),
+            digits: digits.unwrap_or(OTP_DEFAULT_DIGITS_VALUE),
             secret,
             secret_key,
         }
@@ -129,7 +129,7 @@ impl HOTPContext {
             .into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
-        let s_num = s_bits % (10 as u32).pow(self.digits as u32);
+        let s_num = s_bits % (10_u32).pow(self.digits as u32);
 
         format!("{:0>6}", s_num)
     }
@@ -139,7 +139,7 @@ impl OtpAuth for HOTPContext {
     fn to_uri(&self, label: Option<&str>, issuer: Option<&str>) -> String {
         let mut uri = format!(
             "otpauth://hotp/{}?secret={}&algorithm={}&digits={}&counter={}",
-            label.unwrap_or_else(|| "slauth"),
+            label.unwrap_or("slauth"),
             base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
             self.alg.to_string(),
             self.digits,
@@ -250,7 +250,7 @@ impl OtpAuth for HOTPContext {
 
 #[cfg(feature = "native-bindings")]
 mod native_bindings {
-    use std::{os::raw::c_char, ptr::null_mut};
+    use std::{os::raw::c_char, ptr::null_mut, slice};
 
     use super::*;
     use crate::strings;
@@ -266,9 +266,15 @@ mod native_bindings {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn hotp_from_parts(secret: *const u8, secret_len: usize, counter: usize, digits: usize, algo: usize) -> *mut HOTPContext {
+    pub unsafe extern "C" fn hotp_from_parts(
+        secret: *const u8,
+        secret_len: usize,
+        counter: usize,
+        digits: usize,
+        algo: usize,
+    ) -> *mut HOTPContext {
         if secret.is_null() {
-            return Box::into_raw(Box::from_raw(null_mut()))
+            return Box::into_raw(Box::from_raw(null_mut()));
         }
 
         let secret = slice::from_raw_parts(secret, secret_len);
@@ -277,13 +283,13 @@ mod native_bindings {
             0 => HashesAlgorithm::SHA1,
             1 => HashesAlgorithm::SHA256,
             2 => HashesAlgorithm::SHA512,
-            _ => HashesAlgorithm::SHA1
+            _ => HashesAlgorithm::SHA1,
         };
 
         let ctx = HOTPBuilder::new()
             .algorithm(algo)
             .digits(digits)
-            .counter(counter as u64u)
+            .counter(counter as u64)
             .secret(secret)
             .build();
 

@@ -1,8 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::oath::{
-    totp::{TOTPBuilder, TOTPContext},
     hotp::{HOTPBuilder, HOTPContext},
+    totp::{TOTPBuilder, TOTPContext},
     HashesAlgorithm, OtpAuth,
 };
 

@@ -180,7 +180,7 @@ impl Message for RegisterResponse {
         data.write_u8(reserved)?;
         data.write_all(&user_public_key)?;
         data.write_u8(key_handle_length)?;
-        data.write_all(&key_handle.as_bytes())?;
+        data.write_all(key_handle.as_bytes())?;
         data.write_all(&attestation_cert)?;
         data.write_all(&signature)?;
 
