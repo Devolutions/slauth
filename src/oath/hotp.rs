@@ -66,6 +66,7 @@ impl HOTPBuilder {
     }
 }
 
+#[derive(Clone)]
 pub struct HOTPContext {
     alg: HashesAlgorithm,
     counter: u64,
@@ -262,6 +263,31 @@ mod native_bindings {
                 .map(Box::new)
                 .unwrap_or_else(|_| Box::from_raw(null_mut())),
         )
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn hotp_from_parts(secret: *const u8, secret_len: usize, counter: usize, digits: usize, algo: usize) -> *mut HOTPContext {
+        if secret.is_null() {
+            return Box::into_raw(Box::from_raw(null_mut()))
+        }
+
+        let secret = slice::from_raw_parts(secret, secret_len);
+
+        let algo = match algo {
+            0 => HashesAlgorithm::SHA1,
+            1 => HashesAlgorithm::SHA256,
+            2 => HashesAlgorithm::SHA512,
+            _ => HashesAlgorithm::SHA1
+        };
+
+        let ctx = HOTPBuilder::new()
+            .algorithm(algo)
+            .digits(digits)
+            .counter(counter as u64u)
+            .secret(secret)
+            .build();
+
+        Box::into_raw(Box::new(ctx))
     }
 
     #[no_mangle]

@@ -10,11 +10,14 @@ pub mod hotp;
 pub mod totp;
 
 pub const OTP_DEFAULT_DIGITS_VALUE: usize = 6;
+pub const OTP_ALG_SHA1: usize = 0;
+pub const OTP_ALG_SHA256: usize = 1;
+pub const OTP_ALG_SHA512: usize = 2;
 pub const OTP_DEFAULT_ALG_VALUE: HashesAlgorithm = HashesAlgorithm::SHA1;
 
 #[derive(Clone)]
 pub enum HashesAlgorithm {
-    SHA1,
+    SHA1 = 0,
     SHA256,
     SHA512,
 }
