@@ -2,7 +2,7 @@ use crate::webauthn::{
     error::Error,
     proto::constants::{
         ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
-        WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
+        WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
     },
 };
 use byteorder::{BigEndian, ReadBytesExt};
@@ -283,6 +283,8 @@ impl Message for AttestationObject {
             WEBAUTHN_FORMAT_ANDROID_SAFETYNET => serde_cbor::value::from_value::<AndroidSafetynet>(value.att_stmt)
                 .ok()
                 .map(AttestationStatement::AndroidSafetynet),
+
+            WEBAUTHN_FORMAT_NONE => Some(AttestationStatement::None),
 
             _ => None,
         };
