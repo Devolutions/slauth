@@ -37,7 +37,7 @@ pub fn main() {
 
         if let Err(e) = server.run() {
             println!("{:?}", e);
-            assert!(false);
+            panic!()
         }
 
         struct TestControllerContext {
@@ -144,7 +144,7 @@ pub fn main() {
                                 context.clone(),
                                 "http://localhost",
                                 uuid.as_str(),
-                                sign_count.clone(),
+                                *sign_count,
                             );
                             match verifier.verify() {
                                 Ok(res) => Ok((cred_pub.clone(), res.sign_count)),
@@ -165,7 +165,7 @@ pub fn main() {
 
                 match result {
                     Ok((cred_pub, sign_count)) => {
-                        self.creds.write().unwrap().insert(uuid, (cred_pub.clone(), sign_count));
+                        self.creds.write().unwrap().insert(uuid, (cred_pub, sign_count));
                         res.status(200).body("it works".to_string());
                     }
 
@@ -205,7 +205,7 @@ pub fn main() {
                     return RequestContinuation::Stop;
                 }
 
-                return RequestContinuation::Continue;
+                RequestContinuation::Continue
             }
         }
 

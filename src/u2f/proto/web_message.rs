@@ -282,6 +282,6 @@ fn request_json_format() {
             assert_eq!(sign.registered_keys[0].transports, Some(vec![Transport::Usb, Transport::Nfc]));
         }
     } else {
-        assert!(false);
+        panic!()
     }
 }

@@ -35,7 +35,7 @@ pub mod client {
         ) -> Result<(Response, SigningKey), Error> {
             let U2fRequest { app_id, data, .. } = self;
 
-            let origin = app_id.as_ref().cloned().unwrap_or_else(|| origin);
+            let origin = app_id.as_ref().cloned().unwrap_or(origin);
             let mut hasher = Sha256::new();
 
             hasher.input(&origin);
@@ -104,7 +104,7 @@ pub mod client {
         pub(crate) fn sign(&self, signing_key: &SigningKey, origin: String, counter: u32, user_presence: bool) -> Result<Response, Error> {
             let U2fRequest { app_id, data, .. } = self;
 
-            let origin = app_id.as_ref().cloned().unwrap_or_else(|| origin);
+            let origin = app_id.as_ref().cloned().unwrap_or(origin);
             let mut hasher = Sha256::new();
 
             hasher.input(&origin);
@@ -226,7 +226,7 @@ pub mod client {
         #[no_mangle]
         pub unsafe extern "C" fn web_request_timeout(req: *mut WebRequest) -> c_ulonglong {
             let req = &*req;
-            req.timeout_seconds.unwrap_or_else(|| 60)
+            req.timeout_seconds.unwrap_or(60)
         }
 
         #[no_mangle]
@@ -262,7 +262,7 @@ pub mod client {
         ) -> *mut ClientWebResponse {
             let req = &*req;
             let signing_key = &*signing_key;
-            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(String::new);
+            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_default();
 
             let request_id = req.request_id;
 
@@ -313,7 +313,7 @@ pub mod client {
             let attestation_cert = std::slice::from_raw_parts(attestation_cert, attestation_cert_len as usize);
             let attestation_key = std::slice::from_raw_parts(attestation_key, attestation_key_len as usize);
 
-            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_else(String::new);
+            let default_origin = strings::c_char_to_string_checked(origin).unwrap_or_default();
 
             let request_id = req.request_id;
             let mut signing_key = None;

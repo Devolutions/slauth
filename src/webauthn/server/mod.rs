@@ -218,7 +218,7 @@ impl CredentialCreationVerifier {
         let attested_credential_data = attestation
             .auth_data
             .attested_credential_data
-            .ok_or_else(|| Error::CredentialError(CredentialError::AttestationMissing))?;
+            .ok_or(Error::CredentialError(CredentialError::AttestationMissing))?;
 
         if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
             return Err(Error::CredentialError(CredentialError::KeyType));
@@ -252,8 +252,7 @@ impl CredentialCreationVerifier {
                     match cert_arr.pop() {
                         Some(serde_cbor::Value::Bytes(cert)) => {
                             let mut public_key_u2f = attested_credential_data.credential_public_key.coords.to_vec();
-                            let mut msg = Vec::new();
-                            msg.push(0x00);
+                            let mut msg = vec![0x00];
                             msg.append(&mut attestation.auth_data.rp_id_hash.to_vec());
                             msg.append(&mut client_data_hash);
                             msg.append(&mut attested_credential_data.credential_id.clone());
