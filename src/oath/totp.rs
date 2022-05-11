@@ -62,19 +62,19 @@ impl TOTPBuilder {
             initial_time,
         } = self;
 
-        let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
-        let secret = secret.unwrap_or_else(Vec::new);
+        let alg = alg.unwrap_or(OTP_DEFAULT_ALG_VALUE);
+        let secret = secret.unwrap_or_default();
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         TOTPContext {
             alg,
-            period: period.unwrap_or_else(|| TOTP_DEFAULT_PERIOD_VALUE),
-            backward_resync: backward_resync.unwrap_or_else(|| TOTP_DEFAULT_BACK_RESYNC_VALUE),
-            forward_resync: forward_resync.unwrap_or_else(|| TOTP_DEFAULT_FORWARD_RESYNC_VALUE),
-            digits: digits.unwrap_or_else(|| OTP_DEFAULT_DIGITS_VALUE),
+            period: period.unwrap_or(TOTP_DEFAULT_PERIOD_VALUE),
+            backward_resync: backward_resync.unwrap_or(TOTP_DEFAULT_BACK_RESYNC_VALUE),
+            forward_resync: forward_resync.unwrap_or(TOTP_DEFAULT_FORWARD_RESYNC_VALUE),
+            digits: digits.unwrap_or(OTP_DEFAULT_DIGITS_VALUE),
             secret,
             secret_key,
-            initial_time: initial_time.unwrap_or_else(|| 0),
+            initial_time: initial_time.unwrap_or(0),
             clock_drift: 0,
         }
     }
@@ -191,7 +191,7 @@ impl TOTPContext {
             .into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
-        let s_num = s_bits % (10 as u32).pow(self.digits as u32);
+        let s_num = s_bits % 10_u32.pow(self.digits as u32);
 
         format!("{:0>6}", s_num)
     }
@@ -201,7 +201,7 @@ impl OtpAuth for TOTPContext {
     fn to_uri(&self, label: Option<&str>, issuer: Option<&str>) -> String {
         let mut uri = format!(
             "otpauth://totp/{}?secret={}&algorithm={}&digits={}&period={}",
-            label.unwrap_or_else(|| "slauth"),
+            label.unwrap_or("slauth"),
             base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
             self.alg.to_string(),
             self.digits,
@@ -377,7 +377,7 @@ mod native_bindings {
 
 #[test]
 fn test_multiple() {
-    const MK_ULTRA: &'static str = "patate";
+    const MK_ULTRA: &str = "patate";
 
     let mut server = TOTPContext::builder().period(5).secret(MK_ULTRA.as_bytes()).build();
 
@@ -392,7 +392,7 @@ fn test_multiple() {
 
 #[test]
 fn test_clock_drifting() {
-    const MK_ULTRA: &'static str = "patate";
+    const MK_ULTRA: &str = "patate";
 
     let mut server = TOTPContext::builder()
         .period(5)

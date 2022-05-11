@@ -51,15 +51,15 @@ impl HOTPBuilder {
             secret,
         } = self;
 
-        let alg = alg.unwrap_or_else(|| OTP_DEFAULT_ALG_VALUE);
-        let secret = secret.unwrap_or_else(Vec::new);
+        let alg = alg.unwrap_or(OTP_DEFAULT_ALG_VALUE);
+        let secret = secret.unwrap_or_default();
         let secret_key = alg.to_mac_hash_key(secret.as_slice());
 
         HOTPContext {
             alg,
-            counter: counter.unwrap_or_else(|| HOTP_DEFAULT_COUNTER_VALUE),
-            resync: resync.unwrap_or_else(|| HOTP_DEFAULT_RESYNC_VALUE),
-            digits: digits.unwrap_or_else(|| OTP_DEFAULT_DIGITS_VALUE),
+            counter: counter.unwrap_or(HOTP_DEFAULT_COUNTER_VALUE),
+            resync: resync.unwrap_or(HOTP_DEFAULT_RESYNC_VALUE),
+            digits: digits.unwrap_or(OTP_DEFAULT_DIGITS_VALUE),
             secret,
             secret_key,
         }
@@ -128,7 +128,7 @@ impl HOTPContext {
             .into_vec();
         let s_bits = dt(hs_sig.as_ref());
 
-        let s_num = s_bits % (10 as u32).pow(self.digits as u32);
+        let s_num = s_bits % 10_u32.pow(self.digits as u32);
 
         format!("{:0>6}", s_num)
     }
@@ -138,7 +138,7 @@ impl OtpAuth for HOTPContext {
     fn to_uri(&self, label: Option<&str>, issuer: Option<&str>) -> String {
         let mut uri = format!(
             "otpauth://hotp/{}?secret={}&algorithm={}&digits={}&counter={}",
-            label.unwrap_or_else(|| "slauth"),
+            label.unwrap_or("slauth"),
             base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
             self.alg.to_string(),
             self.digits,
@@ -308,7 +308,7 @@ mod native_bindings {
 
 #[test]
 fn hotp_from_uri() {
-    const MK_ULTRA: &'static str = "patate";
+    const MK_ULTRA: &str = "patate";
 
     let server = HOTPBuilder::new()
         .counter(102)
@@ -325,7 +325,7 @@ fn hotp_from_uri() {
 
 #[test]
 fn hotp_multiple() {
-    const MK_ULTRA: &'static str = "patate";
+    const MK_ULTRA: &str = "patate";
 
     let mut server = HOTPBuilder::new()
         .counter(102)
@@ -346,7 +346,7 @@ fn hotp_multiple() {
 
 #[test]
 fn hotp_multiple_resync() {
-    const MK_ULTRA: &'static str = "patate";
+    const MK_ULTRA: &str = "patate";
 
     let mut server = HOTPBuilder::new()
         .counter(102)

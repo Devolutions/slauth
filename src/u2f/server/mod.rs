@@ -85,7 +85,7 @@ impl U2fRequestBuilder {
                     version: U2F_V2_VERSION_STR.to_string(),
                     challenge,
                 }],
-                registered_keys: registered_keys.unwrap_or_else(Vec::new),
+                registered_keys: registered_keys.unwrap_or_default(),
             }),
             U2fRequestType::Sign => {
                 let registered_keys = registered_keys
@@ -179,7 +179,7 @@ impl U2fRegisterResponse {
             let mut data = vec![0x00];
             data.extend_from_slice(&app_id_hash);
             data.extend_from_slice(&challenge_hash);
-            data.extend_from_slice(&raw_u2f_reg.key_handle.as_bytes());
+            data.extend_from_slice(raw_u2f_reg.key_handle.as_bytes());
             data.extend_from_slice(&raw_u2f_reg.user_public_key);
             data
         };
