@@ -35,16 +35,31 @@ jobs:
           rustup target add aarch64-apple-ios
           rustup target add x86_64-apple-ios
 
-          rustup target add i686-pc-windows-gnu
-          rustup target add i686-pc-windows-msvc
-
-          rustup target add x86_64-pc-windows-gnu
-          rustup target add x86_64-pc-windows-msvc
-
-      - name:  Build Rust
+      - name:  Build Rust Mac Arm64
         shell: bash
         run: |
           cargo build --release --target aarch64-apple-darwin
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: artifact-staging
+          path: |
+            target/**
+
+  build_windows:
+    runs-on: "windows-latest"
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+      - run: git lfs pull
+      - name:  Install Rust
+        shell: bash
+        run: |
+          rustup update
+
+          rustup target add i686-pc-windows-msvc
+          rustup target add x86_64-pc-windows-msvc
 
       - name:  Build Rust Windows 32
         shell: bash
