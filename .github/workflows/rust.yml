@@ -35,10 +35,26 @@ jobs:
           rustup target add aarch64-apple-ios
           rustup target add x86_64-apple-ios
 
+          rustup target add i686-pc-windows-gnu
+          rustup target add i686-pc-windows-msvc
+
+          rustup target add x86_64-pc-windows-gnu
+          rustup target add x86_64-pc-windows-msvc
+
       - name:  Build Rust
         shell: bash
         run: |
           cargo build --release --target aarch64-apple-darwin
+
+      - name:  Build Rust Windows 32
+        shell: bash
+        run: |
+          cargo build --release --target i686-pc-windows-msvc
+      
+      - name:  Build Rust Windows 64
+        shell: bash
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc
 
       - uses: actions/upload-artifact@v3
         with:
