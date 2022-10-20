@@ -129,8 +129,8 @@ impl TOTPContext {
         let mut counter = ((time - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
-            d if d > 0 => counter += d.abs() as u64,
-            d if d < 0 => counter -= d.abs() as u64,
+            d if d > 0 => counter += d.unsigned_abs() as u64,
+            d if d < 0 => counter -= d.unsigned_abs() as u64,
             _ => {}
         }
 
@@ -156,8 +156,8 @@ impl TOTPContext {
         let mut counter = ((get_time() - self.initial_time) / self.period) as u64;
 
         match self.clock_drift {
-            d if d > 0 => counter += d.abs() as u64,
-            d if d < 0 => counter -= d.abs() as u64,
+            d if d > 0 => counter += d.unsigned_abs() as u64,
+            d if d < 0 => counter -= d.unsigned_abs() as u64,
             _ => {}
         }
 

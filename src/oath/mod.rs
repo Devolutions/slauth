@@ -1,7 +1,8 @@
-use hmac::{digest::{InvalidLength}, Mac, SimpleHmac};
-use hmac::digest::{FixedOutputReset, OutputSizeUser};
-use hmac::digest::generic_array::GenericArray;
-use sha1::{Sha1};
+use hmac::{
+    digest::{generic_array::GenericArray, FixedOutputReset, InvalidLength, OutputSizeUser},
+    Mac, SimpleHmac,
+};
+use sha1::Sha1;
 use sha2::{Sha256, Sha512};
 
 pub mod hotp;

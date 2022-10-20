@@ -1,3 +1,4 @@
+use rand::seq::IteratorRandom;
 use saphir::prelude::*;
 use serde_json::{json, Value};
 use slauth::webauthn::{
@@ -10,7 +11,6 @@ use slauth::webauthn::{
     server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier},
 };
 use std::{collections::HashMap, sync::RwLock};
-use rand::seq::IteratorRandom;
 use uuid::Uuid;
 
 struct TestController {
@@ -133,14 +133,20 @@ impl TestController {
             base64::URL_SAFE_NO_PAD,
         );
 
-        let ctx_lock = self.sign_contexts.read()
+        let ctx_lock = self
+            .sign_contexts
+            .read()
             .map_err(|_| CredentialError(CredE::Other("Synchronization error".to_string())))?;
-        let context = ctx_lock.get(&uuid)
+        let context = ctx_lock
+            .get(&uuid)
             .ok_or(CredentialError(CredE::Other("Context not found".to_string())))?;
 
-        let creds_lock = self.creds.read()
+        let creds_lock = self
+            .creds
+            .read()
             .map_err(|_| CredentialError(CredE::Other("Synchronization error".to_string())))?;
-        let (cred_pub, sign_count) = creds_lock.get(&cred.id)
+        let (cred_pub, sign_count) = creds_lock
+            .get(&cred.id)
             .ok_or(CredentialError(CredE::Other("Credential not found".to_string())))?;
 
         let mut verifier = CredentialRequestVerifier::new(
@@ -206,9 +212,7 @@ impl CorsMiddleware {
 async fn main() -> Result<(), SaphirError> {
     let server = Server::builder()
         .configure_middlewares(|stack| stack.apply(CorsMiddleware::new(), vec!["/"], None))
-        .configure_router(|router| {
-            router.controller(TestController::new())
-        })
+        .configure_router(|router| router.controller(TestController::new()))
         .configure_listener(|listener_config| listener_config.interface("0.0.0.0:12345"))
         .build();
 
@@ -219,6 +223,8 @@ pub fn gen_challenge(len: usize) -> String {
     let charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
     let mut rng = rand::thread_rng();
-    let value = (0..len).map(|_| charset.chars().choose(&mut rng).unwrap() as u8).collect::<Vec<u8>>();
+    let value = (0..len)
+        .map(|_| charset.chars().choose(&mut rng).unwrap() as u8)
+        .collect::<Vec<u8>>();
     base64::encode_config(value.as_slice(), base64::URL_SAFE_NO_PAD)
 }

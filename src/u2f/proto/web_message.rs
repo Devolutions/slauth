@@ -1,7 +1,7 @@
 use serde_derive::*;
 use serde_repr::*;
 
-#[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialOrd, Eq, PartialEq)]
 /// FIDO U2F Transports
 pub enum Transport {
     /// Bluetooth Classic
@@ -161,7 +161,7 @@ pub struct U2fResponse {
     pub response_data: Response,
 }
 
-#[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug)]
+#[derive(Serialize_repr, Deserialize_repr, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum ErrorCode {
     Ok = 0,
