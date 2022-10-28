@@ -56,8 +56,7 @@ js-sys = "0.3.37"
 wasm-bindgen-test = "0.3.10"
 
 [target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
-#saphir = { version = "3.0.0", features = ["full"] }
-saphir = { version = "3.1.0", path = "../saphir/saphir", features = [ "full" ] }
+saphir = { version = "3.1.0", git = "https://github.com/richerarc/saphir.git", tag = "v3.1.0", features = ["full"] } # not released on crates.io yet, required for dependancies
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
