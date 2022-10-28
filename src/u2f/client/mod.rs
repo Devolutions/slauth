@@ -38,9 +38,9 @@ pub mod client {
             let origin = app_id.as_ref().cloned().unwrap_or(origin);
             let mut hasher = Sha256::new();
 
-            hasher.input(&origin);
+            hasher.update(&origin);
 
-            let application_parameter = hasher.result_reset();
+            let application_parameter = hasher.finalize_reset();
 
             match data {
                 Request::Register(reg) => {
@@ -59,9 +59,9 @@ pub mod client {
 
                     let client_data_str = serde_json::to_string(&client_data)?;
 
-                    hasher.input(&client_data_str);
+                    hasher.update(&client_data_str);
 
-                    let challenge_param = hasher.result_reset();
+                    let challenge_param = hasher.finalize_reset();
 
                     let mut data = Vec::with_capacity(64);
 
@@ -107,9 +107,9 @@ pub mod client {
             let origin = app_id.as_ref().cloned().unwrap_or(origin);
             let mut hasher = Sha256::new();
 
-            hasher.input(&origin);
+            hasher.update(&origin);
 
-            let application_parameter = hasher.result_reset();
+            let application_parameter = hasher.finalize_reset();
 
             match data {
                 Request::Register(_reg) => Err(Error::Other("Unexpected Register request while signing".to_string())),
@@ -124,9 +124,9 @@ pub mod client {
 
                     let client_data_str = serde_json::to_string(&client_data)?;
 
-                    hasher.input(&client_data_str);
+                    hasher.update(&client_data_str);
 
-                    let challenge_param = hasher.result_reset();
+                    let challenge_param = hasher.finalize_reset();
 
                     let mut data = Vec::new();
 

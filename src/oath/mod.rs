@@ -1,7 +1,6 @@
 use hmac::{
-    crypto_mac::{InvalidKeyLength, MacResult},
-    digest::FixedOutput,
-    Hmac, Mac,
+    digest::{generic_array::GenericArray, FixedOutputReset, InvalidLength, OutputSizeUser},
+    Mac, SimpleHmac,
 };
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
@@ -26,39 +25,39 @@ pub(crate) struct MacHashKey {
 }
 
 impl MacHashKey {
-    pub(crate) fn sign(&self, data: &[u8]) -> Result<HmacShaResult, InvalidKeyLength> {
+    pub(crate) fn sign(&self, data: &[u8]) -> Result<HmacShaResult, InvalidLength> {
         match self.alg {
             HashesAlgorithm::SHA1 => {
-                let mut context = Hmac::<Sha1>::new_varkey(&self.secret)?;
-                context.input(data);
-                Ok(HmacShaResult::RSHA1(context.result_reset()))
+                let mut context = SimpleHmac::<Sha1>::new_from_slice(&self.secret)?;
+                context.update(data);
+                Ok(HmacShaResult::RSHA1(context.finalize_fixed_reset()))
             }
             HashesAlgorithm::SHA256 => {
-                let mut context = Hmac::<Sha256>::new_varkey(&self.secret)?;
-                context.input(data);
-                Ok(HmacShaResult::RSHA256(context.result_reset()))
+                let mut context = SimpleHmac::<Sha256>::new_from_slice(&self.secret)?;
+                context.update(data);
+                Ok(HmacShaResult::RSHA256(context.finalize_fixed_reset()))
             }
             HashesAlgorithm::SHA512 => {
-                let mut context = Hmac::<Sha512>::new_varkey(&self.secret)?;
-                context.input(data);
-                Ok(HmacShaResult::RSHA512(context.result_reset()))
+                let mut context = SimpleHmac::<Sha512>::new_from_slice(&self.secret)?;
+                context.update(data);
+                Ok(HmacShaResult::RSHA512(context.finalize_fixed_reset()))
             }
         }
     }
 }
 
 pub(crate) enum HmacShaResult {
-    RSHA1(MacResult<<Sha1 as FixedOutput>::OutputSize>),
-    RSHA256(MacResult<<Sha256 as FixedOutput>::OutputSize>),
-    RSHA512(MacResult<<Sha512 as FixedOutput>::OutputSize>),
+    RSHA1(GenericArray<u8, <Sha1 as OutputSizeUser>::OutputSize>),
+    RSHA256(GenericArray<u8, <Sha256 as OutputSizeUser>::OutputSize>),
+    RSHA512(GenericArray<u8, <Sha512 as OutputSizeUser>::OutputSize>),
 }
 
 impl HmacShaResult {
     pub(crate) fn into_vec(self) -> Vec<u8> {
         match self {
-            HmacShaResult::RSHA1(res) => res.code().as_slice().to_vec(),
-            HmacShaResult::RSHA256(res) => res.code().as_slice().to_vec(),
-            HmacShaResult::RSHA512(res) => res.code().as_slice().to_vec(),
+            HmacShaResult::RSHA1(res) => res.to_vec(),
+            HmacShaResult::RSHA256(res) => res.to_vec(),
+            HmacShaResult::RSHA512(res) => res.to_vec(),
         }
     }
 }

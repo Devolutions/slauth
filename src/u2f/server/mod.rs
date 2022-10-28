@@ -163,17 +163,17 @@ impl U2fRegisterResponse {
             serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
 
         // Validate signature
-        let attestation_cert = EndEntityCert::from(&raw_u2f_reg.attestation_cert)?;
+        let attestation_cert = EndEntityCert::try_from(raw_u2f_reg.attestation_cert.as_slice())?;
 
         let mut hasher = Sha256::new();
 
-        hasher.input(client_data_bytes.as_slice());
+        hasher.update(client_data_bytes.as_slice());
 
-        let challenge_hash = hasher.result_reset();
+        let challenge_hash = hasher.finalize_reset();
 
-        hasher.input(&client_data.origin);
+        hasher.update(&client_data.origin);
 
-        let app_id_hash = hasher.result_reset();
+        let app_id_hash = hasher.finalize_reset();
 
         let signature_data = {
             let mut data = vec![0x00];
@@ -229,13 +229,13 @@ impl U2fSignResponse {
 
         let mut hasher = Sha256::new();
 
-        hasher.input(client_data_bytes.as_slice());
+        hasher.update(client_data_bytes.as_slice());
 
-        let challenge_hash = hasher.result_reset();
+        let challenge_hash = hasher.finalize_reset();
 
-        hasher.input(&client_data.origin);
+        hasher.update(&client_data.origin);
 
-        let app_id_hash = hasher.result_reset();
+        let app_id_hash = hasher.finalize_reset();
 
         let signature_data = {
             let mut data = Vec::new();

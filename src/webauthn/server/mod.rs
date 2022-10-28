@@ -150,7 +150,7 @@ impl CredentialCreationVerifier {
 
     pub fn get_cert(&self) -> Result<EndEntityCert, Error> {
         if let Some(cert) = &self.cert {
-            webpki::EndEntityCert::from(cert.as_slice()).map_err(Error::WebPkiError)
+            webpki::EndEntityCert::try_from(cert.as_slice()).map_err(Error::WebPkiError)
         } else {
             Err(Error::Other("certificate is missing or has not been verified yet".to_string()))
         }
@@ -185,11 +185,11 @@ impl CredentialCreationVerifier {
         }
 
         let mut hasher = Sha256::new();
-        hasher.input(client_data_json);
-        let mut client_data_hash = hasher.result_reset().to_vec();
+        hasher.update(client_data_json);
+        let mut client_data_hash = hasher.finalize_reset().to_vec();
 
-        hasher.input(self.context.rp.id.as_ref().unwrap_or(&self.origin));
-        if attestation.auth_data.rp_id_hash != hasher.result().as_slice() {
+        hasher.update(self.context.rp.id.as_ref().unwrap_or(&self.origin));
+        if attestation.auth_data.rp_id_hash != hasher.finalize().as_slice() {
             return Err(Error::CredentialError(CredentialError::Rp));
         }
 
@@ -232,7 +232,7 @@ impl CredentialCreationVerifier {
                         msg.append(&mut client_data_hash);
 
                         self.cert = Some(cert.clone());
-                        let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
+                        let web_cert = webpki::EndEntityCert::try_from(cert.as_slice())?;
                         if let Err(e) = web_cert.verify_signature(get_alg_from_cose(packed.alg), msg.as_slice(), packed.sig.as_slice()) {
                             return Err(Error::WebPkiError(e));
                         }
@@ -259,7 +259,7 @@ impl CredentialCreationVerifier {
                             msg.append(&mut public_key_u2f);
 
                             self.cert = Some(cert.clone());
-                            let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
+                            let web_cert = webpki::EndEntityCert::try_from(cert.as_slice())?;
                             if let Err(e) = web_cert.verify_signature(&webpki::ECDSA_P256_SHA256, msg.as_slice(), fido_u2f.sig.as_slice()) {
                                 return Err(Error::WebPkiError(e));
                             }
@@ -280,7 +280,7 @@ impl CredentialCreationVerifier {
                             msg.append(&mut client_data_hash);
 
                             self.cert = Some(cert.clone());
-                            let web_cert = webpki::EndEntityCert::from(cert.as_slice())?;
+                            let web_cert = webpki::EndEntityCert::try_from(cert.as_slice())?;
                             if let Err(e) =
                                 web_cert.verify_signature(get_alg_from_cose(android_key.alg), msg.as_slice(), android_key.sig.as_slice())
                             {
@@ -469,8 +469,8 @@ impl CredentialRequestVerifier {
         }
 
         let mut hasher = Sha256::new();
-        hasher.input(self.context.rp_id.as_ref().unwrap_or(&self.origin));
-        if auth_data.rp_id_hash != hasher.result_reset().as_slice() {
+        hasher.update(self.context.rp_id.as_ref().unwrap_or(&self.origin));
+        if auth_data.rp_id_hash != hasher.finalize_reset().as_slice() {
             return Err(Error::CredentialError(CredentialError::Rp));
         }
 
@@ -491,8 +491,8 @@ impl CredentialRequestVerifier {
             }
         }
 
-        hasher.input(client_data_json);
-        let mut client_data_hash = hasher.result().to_vec();
+        hasher.update(client_data_json);
+        let mut client_data_hash = hasher.finalize().to_vec();
 
         let mut msg = raw_auth_data;
         msg.append(&mut client_data_hash);
