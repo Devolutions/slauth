@@ -156,6 +156,106 @@ impl CredentialCreationVerifier {
         }
     }
 
+    pub fn get_attestation(&mut self) -> Result<AttestationObject, Error> {
+        let response = self
+            .credential
+            .response
+            .as_ref()
+            .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
+
+        let client_data_json = base64::decode(&response.client_data_json)?;
+        let _client_data = serde_json::from_slice::<CollectedClientData>(client_data_json.as_slice())?;
+
+        let raw_attestation = response
+            .attestation_object
+            .as_ref()
+            .ok_or_else(|| Error::Other("attestation object must be present for verification".to_string()))?;
+        let attestation = AttestationObject::from_base64(raw_attestation)?;
+        return Ok(attestation);
+
+        // if client_data.request_type != WEBAUTHN_REQUEST_TYPE_CREATE {
+        //     return Err(Error::CredentialError(CredentialError::RequestType));
+        // }
+        //
+        // if client_data.challenge != self.context.challenge {
+        //     return Err(Error::CredentialError(CredentialError::Challenge));
+        // }
+        //
+        // if client_data.origin != self.origin {
+        //     return Err(Error::CredentialError(CredentialError::Origin));
+        // }
+        //
+        // let mut hasher = Sha256::new();
+        // hasher.update(client_data_json);
+        // let mut _client_data_hash = hasher.finalize_reset().to_vec();
+        //
+        // hasher.update(self.context.rp.id.as_ref().unwrap_or(&self.origin));
+        // if attestation.auth_data.rp_id_hash != hasher.finalize().as_slice() {
+        //     return Err(Error::CredentialError(CredentialError::Rp));
+        // }
+        //
+        // if (attestation.auth_data.flags & WEBAUTHN_USER_PRESENT_FLAG) == 0 {
+        //     return Err(Error::CredentialError(CredentialError::UserPresentFlag));
+        // }
+        //
+        // let has_user_verification = (attestation.auth_data.flags & WEBAUTHN_USER_VERIFIED_FLAG) != 0;
+        // if let Some(Some(UserVerificationRequirement::Required)) = self
+        //     .context
+        //     .authenticator_selection
+        //     .as_ref()
+        //     .map(|auth_select| auth_select.user_verification.as_ref())
+        // {
+        //     if !has_user_verification {
+        //         return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
+        //     }
+        // }
+        //
+        // if let Some(extensions) = &self.context.extensions {
+        //     if !extensions.is_null() {
+        //         return Err(Error::CredentialError(CredentialError::Extensions));
+        //     }
+        // }
+        //
+        // let attested_credential_data = attestation.clone()
+        //     .auth_data
+        //     .attested_credential_data
+        //     .ok_or(Error::CredentialError(CredentialError::AttestationMissing))?;
+        //
+        // if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
+        //     return Err(Error::CredentialError(CredentialError::KeyType));
+        // }
+        //
+        // match attestation.att_stmt {
+        //     Some(AttestationStatement::TPM(tpm)) => {
+        //         // return Ok(tpm.alg as u16);
+        //         // if let Some(serde_cbor::Value::Array(mut cert_arr)) = tpm.x5c {
+        //         //     match cert_arr.pop() {
+        //         //         Some(serde_cbor::Value::Bytes(cert)) => {
+        //         //             let mut msg = attestation.raw_auth_data.clone();
+        //         //             msg.append(&mut client_data_hash);
+        //         //
+        //         //             self.cert = Some(cert.clone());
+        //         //             let _web_cert = webpki::EndEntityCert::try_from(cert.clone().as_slice())?;
+        //         //             return Ok(get_alg_from_cose(tpm.alg));
+        //         //             // if let Err(e) =
+        //         //             //     web_cert.verify_signature(get_alg_from_cose(tpm.alg), msg.as_slice(), tpm.sig.as_slice())
+        //         //             // {
+        //         //             //     return Err(Error::WebPkiError(e));
+        //         //             // }
+        //         //         }
+        //         //
+        //         //         _ => {
+        //         //             return Err(Error::CredentialError(CredentialError::CertificateMissing));
+        //         //         }
+        //         //     }
+        //         // } else {
+        //         //     return Err(Error::CredentialError(CredentialError::CertificateMissing));
+        //         // }
+        //     },
+        //     _ => return Err(Error::CredentialError(CredentialError::AttestationNotSupported))
+        // }
+    }
+
     pub fn verify(&mut self) -> Result<CredentialCreationResult, Error> {
         let response = self
             .credential
@@ -293,6 +393,31 @@ impl CredentialCreationVerifier {
                         }
                     }
                 }
+            }
+
+            Some(AttestationStatement::TPM(tpm)) => {
+                if let Some(x5c) = tpm.x5c {
+                    self.cert = x5c.ca_cert;
+                }
+                // if let Some(serde_cbor::Value::Array(mut cert_arr)) = tpm.x5c {
+                //     match cert_arr.pop() {
+                //         Some(serde_cbor::Value::Bytes(cert)) => {
+                //             self.cert = Some(cert.clone());
+                //             let msg = vec![2u8];
+                //             let web_cert = webpki::EndEntityCert::try_from(cert.as_slice())?;
+                //
+                //             if let Err(e) =
+                //                 web_cert.verify_signature(get_alg_from_cose(tpm.alg), msg.as_slice(), tpm.sig.as_slice())
+                //             {
+                //                 return Err(Error::WebPkiError(e));
+                //             }
+                //         }
+                //
+                //         _ => {
+                //             return Err(Error::CredentialError(CredentialError::CertificateMissing));
+                //         }
+                //     }
+                // }
             }
 
             Some(AttestationStatement::None) => {}

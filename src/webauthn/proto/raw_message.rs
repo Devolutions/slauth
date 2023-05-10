@@ -14,6 +14,10 @@ use std::{
     io::{Cursor, Read},
     str::FromStr,
 };
+use std::fmt::Formatter;
+use std::marker::PhantomData;
+use serde::de::Visitor;
+use serde::Deserializer;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -45,14 +49,264 @@ pub struct Packed {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct TPM {
+    pub ver: serde_cbor::Value,
     pub alg: i64,
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub x5c: Option<serde_cbor::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ecdaa_key_id: Option<serde_cbor::Value>,
+    pub x5c: Option<X5C>,
+    #[serde(deserialize_with = "deserialize_cert_info")]
+    pub cert_info: CertInfo,
+    #[serde(deserialize_with = "deserialize_public_area")]
+    pub pub_area: PublicArea,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectAttributes {
+    pub fixed_tpm: bool,
+    pub st_clear: bool,
+    pub fixed_parent: bool,
+    pub sensitive_data_origin: bool,
+    pub user_with_auth: bool,
+    pub admin_with_policy: bool,
+    pub no_da: bool,
+    pub encryption_duplication: bool,
+    pub restricted: bool,
+    pub decrypt: bool,
+    pub sign_or_encrypt: bool,
+}
+
+impl ObjectAttributes {
+    pub fn from_u32(o: u32) -> ObjectAttributes {
+        ObjectAttributes {
+            fixed_tpm: (o & 1) != 0,
+            st_clear: (o & 2) != 0,
+            fixed_parent: (o & 8) != 0,
+            sensitive_data_origin: (o & 16) != 0,
+            user_with_auth: (o & 32) != 0,
+            admin_with_policy: (o & 64) != 0,
+            no_da: (o & 512) != 0,
+            encryption_duplication: (o & 1024) != 0,
+            restricted: (o & 32768) != 0,
+            decrypt: (o & 65536) != 0,
+            sign_or_encrypt: (o & 131072) != 0,
+        }
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TPM2BDigest {
+    size: u16,
+    #[serde(with = "serde_bytes")]
+    buffer: Option<Vec<u8>>
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum AlgParameters {
+    None,
+    RSA(RsaAlgParameters),
+    ECC(EccAlgParameters),
+}
+
+impl Default for AlgParameters {
+    fn default() -> Self {
+        AlgParameters::None
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RsaAlgParameters {
+    pub symmetric: TpmAlgId,
+    pub scheme: TpmAlgId,
+    pub key_bits: u16,
+    pub exponent: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct EccAlgParameters {
+    pub symmetrics: TpmAlgId,
+    pub scheme: TpmAlgId,
+    pub curve_id: TpmEccCurve,
+    pub kdf: TpmAlgId,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicArea {
+    #[serde(alias = "type")]
+    pub alg_type: u16,
+    pub name_alg: u16,
+    pub object_attributes: ObjectAttributes,
+    pub auth_policy: TPM2BDigest,
+    pub parameters: AlgParameters,
+    pub unique: TPM2BDigest,
+}
+
+impl PublicArea {
+    pub fn from_vec(buf: Vec<u8>) -> Result<PublicArea, Error> {
+        let mut cursor = Cursor::new(buf);
+        let alg_type = cursor.read_u16::<BigEndian>().unwrap();
+
+        let name_alg = cursor.read_u16::<BigEndian>().unwrap();
+
+        let o = cursor.read_u32::<BigEndian>().unwrap();
+        let object_attributes = ObjectAttributes::from_u32(o);
+
+        let auth_policy_length = cursor.read_u16::<BigEndian>().unwrap();
+        let mut auth_policy = vec![0u8; auth_policy_length as usize];
+        cursor.read_exact(&mut auth_policy).unwrap();
+
+        let parameters = match TpmAlgId::from_u16(alg_type) {
+            TpmAlgId::RSA => {
+                AlgParameters::RSA(RsaAlgParameters{
+                    symmetric: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
+                    scheme: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
+                    key_bits: cursor.read_u16::<BigEndian>()?,
+                    exponent: cursor.read_u32::<BigEndian>()?,
+                })
+            }
+            TpmAlgId::ECC => {
+                AlgParameters::ECC(EccAlgParameters{
+                    symmetrics: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
+                    scheme: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
+                    curve_id: TpmEccCurve::from_u16(cursor.read_u16::<BigEndian>()?),
+                    kdf: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
+                })
+            }
+            _ => {
+                AlgParameters::None
+            }
+        };
+
+        let unique_length = cursor.read_u16::<BigEndian>().unwrap();
+        let mut unique = vec![0u8; unique_length as usize];
+        cursor.read_exact(&mut unique).unwrap();
+
+        Ok(PublicArea {
+            alg_type,
+            name_alg,
+            object_attributes,
+            auth_policy: TPM2BDigest {
+                size: auth_policy_length,
+                buffer: Some(auth_policy)
+            },
+            parameters,
+            unique: TPM2BDigest {
+                size: unique_length,
+                buffer: Some(unique)
+            }
+        })
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CertInfo {
+    pub magic: u32,
+    pub attestation_type: AttestationType,
+    pub qualified_signer: Tpm2bName,
+    pub extra_data: Tpm2bData,
+    pub clock_info: TpmsClockInfo,
+    pub firmware_version: u64,
+    pub attested_name: (u16, Vec<u8>, Vec<u8>),
+}
+
+impl CertInfo {
+    pub fn from_vec(buf: Vec<u8>) -> Result<CertInfo, Error> {
+        let mut cursor = Cursor::new(buf);
+
+        let magic = cursor.read_u32::<BigEndian>()?;
+
+        let attestation_type = AttestationType::from_u16(cursor.read_u16::<BigEndian>()?);
+
+        let qualifier_signer_length = cursor.read_u16::<BigEndian>()?;
+        let mut qualifier_signer = vec![0u8; qualifier_signer_length as usize];
+        cursor.read_exact(&mut qualifier_signer)?;
+
+        let extra_data_length = cursor.read_u16::<BigEndian>()?;
+        let mut extra_data = vec![0u8; extra_data_length as usize];
+        cursor.read_exact(&mut extra_data)?;
+
+        let clock = cursor.read_u64::<BigEndian>()?;
+        let reset_count = cursor.read_u32::<BigEndian>()?;
+        let restart_count = cursor.read_u32::<BigEndian>()?;
+        let safe = cursor.read_u8()?;
+
+        let firmware_version = cursor.read_u64::<BigEndian>()?;
+
+        let attested_name_length = cursor.read_u16::<BigEndian>()?;
+        let mut attested_name_buffer = vec![0u8; attested_name_length as usize];
+        cursor.read_exact(&mut attested_name_buffer)?;
+
+        let attested_qualified_name_length = cursor.read_u16::<BigEndian>()?;
+        let mut attested_qualified_name = vec![0u8; attested_qualified_name_length as usize];
+        cursor.read_exact(&mut attested_qualified_name)?;
+
+        let mut cursor = Cursor::new(attested_name_buffer);
+        let attested_name_alg = cursor.read_u16::<BigEndian>()?;
+        let mut attested_name = vec![0u8; cursor.remaining()];
+        cursor.read_exact(&mut attested_name[..])?;
+
+        Ok(CertInfo{
+            magic,
+            attestation_type,
+            qualified_signer: Tpm2bName {
+                size: qualifier_signer_length,
+                name: Some(qualifier_signer),
+            },
+            extra_data: Tpm2bData {
+                size: extra_data_length,
+                ca_cert: Some(extra_data),
+            },
+            clock_info: TpmsClockInfo {
+                reset_count,
+                clock,
+                restart_count,
+                safe: (safe & 1) != 0
+            },
+            firmware_version,
+            attested_name: (attested_name_alg, attested_name, attested_qualified_name)
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct X5C {
+    #[serde(with = "serde_bytes")]
+    pub aik_cert: Option<Vec<u8>>,
+    #[serde(with = "serde_bytes")]
+    pub ca_cert: Option<Vec<u8>>
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+pub struct Tpm2bData {
+    pub size: u16,
+    #[serde(with = "serde_bytes")]
+    pub ca_cert: Option<Vec<u8>>
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TpmsClockInfo {
+    pub clock: u64,
+    pub reset_count: u32,
+    pub restart_count: u32,
+    pub safe: bool,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Tpm2bName {
+    pub size: u16,
+    #[serde(with = "serde_bytes")]
+    pub name: Option<Vec<u8>>
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -98,6 +352,41 @@ pub struct AuthenticatorData {
     pub sign_count: u32,
     pub attested_credential_data: Option<AttestedCredentialData>,
     pub extensions: serde_cbor::Value,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+#[repr(u16)]
+pub enum AttestationType {
+    None,
+    TpmStAttestNv = 0x8014,
+    TpmStAttestCommandAudit = 0x8015,
+    TpmStAttestSessionAudit = 0x8016,
+    TpmStAttestCertify = 0x8017,
+    TpmStAttestQuote = 0x8018,
+    TpmStAttestTime = 0x8019,
+    TpmStAttestCreation = 0x801A,
+}
+
+impl Default for AttestationType {
+    fn default() -> Self {
+        AttestationType::None
+    }
+}
+
+impl AttestationType {
+    pub fn from_u16(att_type: u16) -> AttestationType {
+        match att_type {
+            0x8014 => AttestationType::TpmStAttestNv,
+            0x8015 => AttestationType::TpmStAttestCommandAudit,
+            0x8016 => AttestationType::TpmStAttestSessionAudit,
+            0x8017 => AttestationType::TpmStAttestCertify,
+            0x8018 => AttestationType::TpmStAttestQuote,
+            0x8019 => AttestationType::TpmStAttestTime,
+            0x801A => AttestationType::TpmStAttestCreation,
+            _ => AttestationType::None
+        }
+    }
 }
 
 impl AuthenticatorData {
@@ -398,4 +687,178 @@ impl FromStr for Coordinates {
             _ => Err(Error::Other("Key prefix missing".to_string())),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum TpmAlgId {
+    Error = 0x0000,
+    RSA = 0x0001,
+    SHA1 = 0x0004,
+    HMAC = 0x0005,
+    AES = 0x0006,
+    MGF1 = 0x0007,
+    KEYEDHASH = 0x0008,
+    XOR = 0x000A,
+    SHA256 = 0x000B,
+    SHA384 = 0x000C,
+    SHA512 = 0x000D,
+    NULL = 0x0010,
+    SM3_256 = 0x0012,
+    SM4 = 0x0013,
+    RSASSA = 0x0014,
+    RSAES = 0x0015,
+    RSAPSS = 0x0016,
+    OAEP = 0x0017,
+    ECDSA = 0x0018,
+    ECDH = 0x0019,
+    ECDAA = 0x001A,
+    SM2 = 0x001B,
+    ECSCHNORR = 0x001C,
+    ECMQV = 0x001D,
+    Kdf1Sp800_56A = 0x0020,
+    KDF2 = 0x0021,
+    Kdf1Sp800_108 = 0x0022,
+    ECC = 0x0023,
+    SYMCIPHER = 0x0025,
+    CAMELLIA = 0x0026,
+    CTR = 0x0040,
+    OFB = 0x0041,
+    CBC = 0x0042,
+    CFB = 0x0043,
+    ECB = 0x0044,
+}
+
+impl TpmAlgId {
+    pub fn from_u16(alg_id: u16) -> TpmAlgId {
+        match alg_id {
+            0x0000 => TpmAlgId::Error,
+            0x0001 => TpmAlgId::RSA,
+            0x0004 => TpmAlgId::SHA1,
+            0x0005 => TpmAlgId::HMAC,
+            0x0006 => TpmAlgId::AES,
+            0x0007 => TpmAlgId::MGF1,
+            0x0008 => TpmAlgId::KEYEDHASH,
+            0x000A => TpmAlgId::XOR,
+            0x000B => TpmAlgId::SHA256,
+            0x000C => TpmAlgId::SHA384,
+            0x000D => TpmAlgId::SHA512,
+            0x0010 => TpmAlgId::NULL,
+            0x0012 => TpmAlgId::SM3_256,
+            0x0013 => TpmAlgId::SM4,
+            0x0014 => TpmAlgId::RSASSA,
+            0x0015 => TpmAlgId::RSAES,
+            0x0016 => TpmAlgId::RSAPSS,
+            0x0017 => TpmAlgId::OAEP,
+            0x0018 => TpmAlgId::ECDSA,
+            0x0019 => TpmAlgId::ECDH,
+            0x001A => TpmAlgId::ECDAA,
+            0x001B => TpmAlgId::SM2,
+            0x001C => TpmAlgId::ECSCHNORR,
+            0x001D => TpmAlgId::ECMQV,
+            0x0020 => TpmAlgId::Kdf1Sp800_56A,
+            0x0021 => TpmAlgId::KDF2,
+            0x0022 => TpmAlgId::Kdf1Sp800_108,
+            0x0023 => TpmAlgId::ECC,
+            0x0025 => TpmAlgId::SYMCIPHER,
+            0x0026 => TpmAlgId::CAMELLIA,
+            0x0040 => TpmAlgId::CTR,
+            0x0041 => TpmAlgId::OFB,
+            0x0042 => TpmAlgId::CBC,
+            0x0043 => TpmAlgId::CFB,
+            0x0044 => TpmAlgId::ECB,
+            _ => TpmAlgId::Error
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum TpmEccCurve {
+    None = 0x0000,
+    NISTP192 = 0x0001,
+    NISTP224 = 0x0002,
+    NISTP256 = 0x0003,
+    NISTP384 = 0x0004,
+    NISTP521 = 0x0005,
+    BNP256 = 0x00010,
+    BNP638 = 0x0011,
+    SM2P256 = 0x0020,
+    BPP256R1 = 0x0030,
+    BPP384R1 = 0x0031,
+    BPP512R1 = 0x0032,
+    Curve25519 = 0x0040,
+    Curve448 = 0x0041,
+}
+
+impl TpmEccCurve {
+    pub fn from_u16(ecc: u16) -> TpmEccCurve {
+        match ecc {
+            0x0000 => TpmEccCurve::None,
+            0x0001 => TpmEccCurve::NISTP192,
+            0x0002 => TpmEccCurve::NISTP224,
+            0x0003 => TpmEccCurve::NISTP256,
+            0x0004 => TpmEccCurve::NISTP384,
+            0x0005 => TpmEccCurve::NISTP521,
+            0x00010 => TpmEccCurve::BNP256,
+            0x0011 => TpmEccCurve::BNP638,
+            0x0020 => TpmEccCurve::SM2P256,
+            0x0030 => TpmEccCurve::BPP256R1,
+            0x0031 => TpmEccCurve::BPP384R1,
+            0x0032 => TpmEccCurve::BPP512R1,
+            0x0040 => TpmEccCurve::Curve25519,
+            0x0041 => TpmEccCurve::Curve448,
+            _ => TpmEccCurve::None
+        }
+    }
+}
+
+pub fn deserialize_cert_info<'de, D>(deserializer: D) -> Result<CertInfo, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    struct CertInfoFromBuffer(PhantomData<fn() -> CertInfo>);
+
+    impl<'de> Visitor<'de> for CertInfoFromBuffer {
+        type Value = CertInfo;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            formatter.write_str("a valid CertInfo buffer")
+        }
+
+        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E> where E: serde::de::Error {
+            CertInfo::from_vec(v).map_err(|e| serde::de::Error::custom(e))
+        }
+
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: serde::de::Error {
+            self.visit_byte_buf(v.to_vec())
+        }
+    }
+
+    deserializer.deserialize_any(CertInfoFromBuffer(PhantomData))
+}
+
+pub fn deserialize_public_area<'de, D>(deserializer: D) -> Result<PublicArea, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    struct PublicAreaFromBuffer(PhantomData<fn() -> PublicArea>);
+
+    impl<'de> Visitor<'de> for PublicAreaFromBuffer {
+        type Value = PublicArea;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            formatter.write_str("a valid PublicArea buffer")
+        }
+
+        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E> where E: serde::de::Error {
+            PublicArea::from_vec(v).map_err(|e| serde::de::Error::custom(e))
+        }
+
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: serde::de::Error {
+            self.visit_byte_buf(v.to_vec())
+        }
+    }
+
+    deserializer.deserialize_any(PublicAreaFromBuffer(PhantomData))
 }
