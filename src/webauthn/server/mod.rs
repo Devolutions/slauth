@@ -24,7 +24,6 @@ use crate::webauthn::{
         },
     },
 };
-// use crate::webauthn::proto::raw_message::TPM;
 
 #[derive(Default)]
 pub struct CredentialCreationBuilder {
