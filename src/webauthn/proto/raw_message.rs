@@ -1,23 +1,35 @@
 use crate::webauthn::{
     error::Error,
     proto::constants::{
-        ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
-        WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
+        ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_CURVE_P521, ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE,
+        ECDSA_Y_PREFIX_UNCOMPRESSED, TCG_AT_TPM_MANUFACTURER, TCG_AT_TPM_MODEL, TCG_AT_TPM_VERSION, TCG_KP_AIK_CERTIFICATE,
+        TPM_GENERATED_VALUE, WEBAUTHN_FORMAT_ANDROID_KEY, WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F,
+        WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
     },
 };
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
+use hmac::digest::FixedOutput;
+use rsa::{pkcs1::DecodeRsaPublicKey, Pkcs1v15Sign, RsaPublicKey};
+use serde::{de::Visitor, Deserializer};
 use serde_cbor::Value;
 use serde_derive::*;
+use sha1::{Digest, Sha1};
+use sha2::Sha256;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
+    fmt::Formatter,
     io::{Cursor, Read},
+    marker::PhantomData,
     str::FromStr,
 };
-use std::fmt::Formatter;
-use std::marker::PhantomData;
-use serde::de::Visitor;
-use serde::Deserializer;
+use x509_parser::{
+    nom::{
+        bytes::complete::{tag, take},
+        IResult, Parser,
+    },
+    prelude::{GeneralName, X509Certificate, X509CertificateParser, X509Version},
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -56,11 +68,260 @@ pub struct TPM {
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub x5c: Option<X5C>,
-    #[serde(deserialize_with = "deserialize_cert_info")]
-    pub cert_info: CertInfo,
-    #[serde(deserialize_with = "deserialize_public_area")]
-    pub pub_area: PublicArea,
+    pub x5c: Option<serde_cbor::Value>,
+    #[serde(with = "serde_bytes")]
+    pub cert_info: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    pub pub_area: Vec<u8>,
+}
+
+impl TPM {
+    pub fn verify_structure(&self) -> Result<CertInfo, Error> {
+        if CoseAlgorithmIdentifier::from_i64(self.alg) == CoseAlgorithmIdentifier::NotSupported {
+            return Err(Error::Other("Algorithm not supported".to_owned()));
+        }
+
+        match &self.ver {
+            Value::Text(ver) => {
+                if ver != "2.0" {
+                    return Err(Error::Other("Attestation Statement versiopn unsupported".to_owned()));
+                }
+            }
+            _ => {
+                return Err(Error::Other("Attestation Statement version invalid".to_owned()));
+            }
+        }
+
+        if self.x5c.is_none() {
+            return Err(Error::Other(
+                "Attestation Identity Key certificate and its certificate chain is missing".to_owned(),
+            ));
+        }
+
+        let cert_info = CertInfo::from_buf(self.cert_info.as_slice())?;
+
+        if cert_info.magic != TPM_GENERATED_VALUE {
+            return Err(Error::Other("Magic is not a TPM generated structure".to_owned()));
+        }
+
+        Ok(cert_info)
+    }
+
+    pub fn verify_attest(&self, cert_info: &CertInfo, name_alg: TpmAlgId) -> Result<(), Error> {
+        match cert_info.attestation_type {
+            AttestationType::TpmStAttestCertify => {
+                let (name, _) = &cert_info.attested_name;
+                let hash_name = match name_alg {
+                    TpmAlgId::SHA256 => {
+                        let mut hash_name: Vec<u8> = vec![0, 11];
+                        let mut hasher = Sha256::new();
+                        hasher.update(self.pub_area.as_slice());
+                        let mut pub_area_hash = hasher.finalize().to_vec();
+                        hash_name.append(&mut pub_area_hash);
+                        hash_name
+                    }
+                    _ => return Err(Error::Other("PubArea hash unknown".to_owned())),
+                };
+
+                if hash_name != name.to_vec() {
+                    return Err(Error::Other("PubArea hash invalid".to_owned()));
+                }
+            }
+            _ => return Err(Error::Other("Attestation type invalid".to_owned())),
+        }
+
+        Ok(())
+    }
+
+    pub fn verify_extra_data(&self, auth_data: &[u8], client_data_hash: &[u8], extra_data: Option<Vec<u8>>) -> Result<(), Error> {
+        let mut buf = auth_data.to_vec();
+        buf.extend_from_slice(client_data_hash);
+
+        let att_to_be_signed = match CoseAlgorithmIdentifier::from_i64(self.alg) {
+            CoseAlgorithmIdentifier::RS1 => {
+                let mut hasher = Sha1::new();
+                hasher.update(buf.as_slice());
+                Ok(hasher.finalize_fixed().to_vec())
+            }
+            CoseAlgorithmIdentifier::RSA => {
+                let mut hasher = Sha256::new();
+                hasher.update(buf.as_slice());
+                Ok(hasher.finalize().to_vec())
+            }
+            _ => Err(Error::Other("Invalid hash algorithm".to_owned())),
+        }?;
+
+        if let Some(extra_data) = extra_data {
+            if att_to_be_signed == extra_data {
+                return Ok(());
+            }
+        }
+
+        Err(Error::Other("extra_data does not match att_to_be_signed".to_owned()))
+    }
+
+    pub fn verify_signature(&self, cert: &[u8]) -> Result<(), Error> {
+        let scheme = match CoseAlgorithmIdentifier::from_i64(self.alg) {
+            CoseAlgorithmIdentifier::RS1 => Pkcs1v15Sign::new::<Sha1>(),
+            CoseAlgorithmIdentifier::RSA => Pkcs1v15Sign::new::<Sha256>(),
+            _ => return Err(Error::Other("Invalid hash algorithm".to_owned())),
+        };
+
+        let public_key = RsaPublicKey::from_pkcs1_der(cert).map_err(|_| Error::Other("Invalid certificate".to_owned()))?;
+        public_key
+            .verify(scheme, self.cert_info.as_slice(), self.sig.as_slice())
+            .map_err(|_| Error::Other("Signature verification failed".to_owned()))
+    }
+
+    pub fn verify_public_key(&mut self, credential_pk: &CredentialPublicKey) -> Result<(), Error> {
+        let pub_area = PublicArea::from_vec(std::mem::take(&mut self.pub_area))?;
+
+        match (
+            CoseAlgorithmIdentifier::from_i64(credential_pk.key_type),
+            pub_area.parameters,
+            pub_area.unique,
+        ) {
+            (CoseAlgorithmIdentifier::RSA, AlgParameters::RSA(_), TpmuPublicId::Rsa(modulus)) => {
+                if credential_pk.coords.to_vec() != modulus {
+                    return Err(Error::Other("PubArea mismatch".to_owned()));
+                }
+            }
+            (CoseAlgorithmIdentifier::EC2, AlgParameters::ECC(params), TpmuPublicId::Ecc(ecc_points)) => {
+                match (credential_pk.curve, params.curve_id) {
+                    (ECDSA_CURVE_P256, TpmEccCurve::NISTP256)
+                    | (ECDSA_CURVE_P384, TpmEccCurve::NISTP384)
+                    | (ECDSA_CURVE_P521, TpmEccCurve::NISTP521) => {}
+                    _ => {
+                        return Err(Error::Other("PubArea mismatch".to_owned()));
+                    }
+                }
+
+                match credential_pk.coords {
+                    Coordinates::Compressed { .. } => {
+                        return Err(Error::Other("PubArea mismatch".to_owned()));
+                    }
+                    Coordinates::Uncompressed { x, y } => {
+                        if x.as_slice() != ecc_points.x.as_slice() || y.as_slice() != ecc_points.y.as_slice() {
+                            return Err(Error::Other("PubArea mismatch".to_owned()));
+                        }
+                    }
+                }
+            }
+            _ => {
+                return Err(Error::Other("PubArea mismatch".to_owned()));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn verify_cert(&self) -> Result<Vec<u8>, Error> {
+        if let Some(serde_cbor::Value::Array(cert_arr)) = self.x5c.as_ref() {
+            match cert_arr.first() {
+                Some(serde_cbor::Value::Bytes(aik_cert)) => {
+                    let (_, x509) = X509CertificateParser::new()
+                        .with_deep_parse_extensions(true)
+                        .parse(aik_cert)
+                        .map_err(|_| Error::Other("Invalid certificate".to_owned()))?;
+
+                    if x509.version != X509Version::V3 {
+                        return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+                    }
+
+                    if x509.subject.iter().next().is_some() {
+                        return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+                    }
+
+                    self.verify_subject_alternative_name(&x509)?;
+                    self.verify_extended_key_usage(&x509)?;
+                    self.verify_basic_constraints(&x509)?;
+                    return Ok(aik_cert.to_vec());
+                }
+
+                _ => {}
+            }
+        }
+
+        Err(Error::Other("Certificate missing".to_owned()))
+    }
+
+    fn verify_subject_alternative_name(&self, x509: &X509Certificate) -> Result<(), Error> {
+        if let Ok(Some(subject_alt_name)) = x509.subject_alternative_name() {
+            if !subject_alt_name.critical {
+                return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+            }
+
+            if subject_alt_name.value.general_names.iter().any(|general_name| {
+                if let GeneralName::DirectoryName(x509_name) = general_name {
+                    let mut alt_name_attributes = HashMap::new();
+
+                    for attribute in x509_name.iter_attributes() {
+                        match attribute.attr_type().as_bytes() {
+                            TCG_AT_TPM_MANUFACTURER => {
+                                if let Ok(manufacturer) = attribute.attr_value().as_str() {
+                                    alt_name_attributes.insert(TCG_AT_TPM_MANUFACTURER, manufacturer.to_owned());
+                                }
+                            }
+                            TCG_AT_TPM_MODEL => {
+                                if let Ok(model) = attribute.attr_value().as_str() {
+                                    alt_name_attributes.insert(TCG_AT_TPM_MODEL, model.to_owned());
+                                }
+                            }
+                            TCG_AT_TPM_VERSION => {
+                                if let Ok(version) = attribute.attr_value().as_str() {
+                                    alt_name_attributes.insert(TCG_AT_TPM_VERSION, version.to_owned());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if alt_name_attributes.contains_key(TCG_AT_TPM_MANUFACTURER)
+                        && alt_name_attributes.contains_key(TCG_AT_TPM_MODEL)
+                        && alt_name_attributes.contains_key(TCG_AT_TPM_VERSION)
+                    {
+                        if let Some(manufacturer) = alt_name_attributes.get(TCG_AT_TPM_MANUFACTURER) {
+                            if let Ok((_, vendor_bytes)) = parse_vendor_attribute(manufacturer.as_bytes()) {
+                                return TpmVendor::try_from_bytes(vendor_bytes).is_ok();
+                            }
+                        }
+                    }
+                }
+                false
+            }) {
+                return Ok(());
+            }
+        }
+
+        Err(Error::Other("Attestation certificate requirement not met".to_owned()))
+    }
+
+    fn verify_extended_key_usage(&self, x509: &X509Certificate) -> Result<(), Error> {
+        if let Ok(Some(extended_key_usage)) = x509.extended_key_usage() {
+            if extended_key_usage.value.other.contains(TCG_KP_AIK_CERTIFICATE) {
+                return Ok(());
+            }
+        }
+
+        Err(Error::Other("Invalid extended key usage".to_owned()))
+    }
+
+    fn verify_basic_constraints(&self, x509: &X509Certificate) -> Result<(), Error> {
+        if let Ok(Some(basic_constraints)) = x509.basic_constraints() {
+            if !basic_constraints.value.ca {
+                return Ok(());
+            }
+        }
+
+        Err(Error::Other("Invalid basic constraints".to_owned()))
+    }
+}
+
+pub fn parse_vendor_attribute(b: &[u8]) -> IResult<&[u8], &[u8; 8]> {
+    let (b, _) = tag("id:")(b)?;
+    let (b, vendor_code) = take(8usize)(b)?;
+
+    Ok((b, vendor_code.try_into().unwrap_or(&[0u8; 8])))
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
@@ -102,7 +363,7 @@ impl ObjectAttributes {
 pub struct TPM2BDigest {
     size: u16,
     #[serde(with = "serde_bytes")]
-    buffer: Option<Vec<u8>>
+    buffer: Option<Vec<u8>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -146,48 +407,58 @@ pub struct PublicArea {
     pub object_attributes: ObjectAttributes,
     pub auth_policy: TPM2BDigest,
     pub parameters: AlgParameters,
-    pub unique: TPM2BDigest,
+    pub unique: TpmuPublicId,
 }
 
 impl PublicArea {
     pub fn from_vec(buf: Vec<u8>) -> Result<PublicArea, Error> {
         let mut cursor = Cursor::new(buf);
-        let alg_type = cursor.read_u16::<BigEndian>().unwrap();
+        let alg_type = cursor.read_u16::<BigEndian>()?;
 
-        let name_alg = cursor.read_u16::<BigEndian>().unwrap();
+        let name_alg = cursor.read_u16::<BigEndian>()?;
 
-        let o = cursor.read_u32::<BigEndian>().unwrap();
+        let o = cursor.read_u32::<BigEndian>()?;
         let object_attributes = ObjectAttributes::from_u32(o);
 
-        let auth_policy_length = cursor.read_u16::<BigEndian>().unwrap();
+        let auth_policy_length = cursor.read_u16::<BigEndian>()?;
         let mut auth_policy = vec![0u8; auth_policy_length as usize];
-        cursor.read_exact(&mut auth_policy).unwrap();
+        cursor.read_exact(&mut auth_policy)?;
 
-        let parameters = match TpmAlgId::from_u16(alg_type) {
+        let (parameters, public_id) = match TpmAlgId::from_u16(alg_type) {
             TpmAlgId::RSA => {
-                AlgParameters::RSA(RsaAlgParameters{
+                let parameters = AlgParameters::RSA(RsaAlgParameters {
                     symmetric: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
                     scheme: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
                     key_bits: cursor.read_u16::<BigEndian>()?,
                     exponent: cursor.read_u32::<BigEndian>()?,
-                })
+                });
+
+                let unique_length = cursor.read_u16::<BigEndian>()?;
+                let mut unique = vec![0u8; unique_length as usize];
+                cursor.read_exact(&mut unique)?;
+
+                (parameters, TpmuPublicId::Rsa(unique))
             }
             TpmAlgId::ECC => {
-                AlgParameters::ECC(EccAlgParameters{
+                let parameters = AlgParameters::ECC(EccAlgParameters {
                     symmetrics: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
                     scheme: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
                     curve_id: TpmEccCurve::from_u16(cursor.read_u16::<BigEndian>()?),
                     kdf: TpmAlgId::from_u16(cursor.read_u16::<BigEndian>()?),
-                })
-            }
-            _ => {
-                AlgParameters::None
-            }
-        };
+                });
 
-        let unique_length = cursor.read_u16::<BigEndian>().unwrap();
-        let mut unique = vec![0u8; unique_length as usize];
-        cursor.read_exact(&mut unique).unwrap();
+                let x_length = cursor.read_u16::<BigEndian>()?;
+                let mut x = vec![0u8; x_length as usize];
+                cursor.read_exact(&mut x)?;
+
+                let y_length = cursor.read_u16::<BigEndian>()?;
+                let mut y = vec![0u8; y_length as usize];
+                cursor.read_exact(&mut y)?;
+
+                (parameters, TpmuPublicId::Ecc(EccPoint { x, y }))
+            }
+            _ => (AlgParameters::None, TpmuPublicId::None),
+        };
 
         Ok(PublicArea {
             alg_type,
@@ -195,15 +466,31 @@ impl PublicArea {
             object_attributes,
             auth_policy: TPM2BDigest {
                 size: auth_policy_length,
-                buffer: Some(auth_policy)
+                buffer: Some(auth_policy),
             },
             parameters,
-            unique: TPM2BDigest {
-                size: unique_length,
-                buffer: Some(unique)
-            }
+            unique: public_id,
         })
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TpmuPublicId {
+    Rsa(Vec<u8>),
+    Ecc(EccPoint),
+    None,
+}
+
+impl Default for TpmuPublicId {
+    fn default() -> Self {
+        TpmuPublicId::None
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EccPoint {
+    pub x: Vec<u8>,
+    pub y: Vec<u8>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
@@ -215,10 +502,15 @@ pub struct CertInfo {
     pub extra_data: Tpm2bData,
     pub clock_info: TpmsClockInfo,
     pub firmware_version: u64,
-    pub attested_name: (u16, Vec<u8>, Vec<u8>),
+    pub alg: u16,
+    pub attested_name: (Vec<u8>, Vec<u8>),
 }
 
 impl CertInfo {
+    pub fn from_buf(buf: &[u8]) -> Result<CertInfo, Error> {
+        CertInfo::from_vec(buf.to_vec())
+    }
+
     pub fn from_vec(buf: Vec<u8>) -> Result<CertInfo, Error> {
         let mut cursor = Cursor::new(buf);
 
@@ -254,7 +546,7 @@ impl CertInfo {
         let mut attested_name = vec![0u8; cursor.remaining()];
         cursor.read_exact(&mut attested_name[..])?;
 
-        Ok(CertInfo{
+        Ok(CertInfo {
             magic,
             attestation_type,
             qualified_signer: Tpm2bName {
@@ -263,33 +555,26 @@ impl CertInfo {
             },
             extra_data: Tpm2bData {
                 size: extra_data_length,
-                ca_cert: Some(extra_data),
+                data: Some(extra_data),
             },
             clock_info: TpmsClockInfo {
                 reset_count,
                 clock,
                 restart_count,
-                safe: (safe & 1) != 0
+                safe: (safe & 1) != 0,
             },
             firmware_version,
-            attested_name: (attested_name_alg, attested_name, attested_qualified_name)
+            alg: attested_name_alg,
+            attested_name: (attested_name, attested_qualified_name),
         })
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct X5C {
-    #[serde(with = "serde_bytes")]
-    pub aik_cert: Option<Vec<u8>>,
-    #[serde(with = "serde_bytes")]
-    pub ca_cert: Option<Vec<u8>>
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct Tpm2bData {
     pub size: u16,
     #[serde(with = "serde_bytes")]
-    pub ca_cert: Option<Vec<u8>>
+    pub data: Option<Vec<u8>>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
@@ -306,7 +591,7 @@ pub struct TpmsClockInfo {
 pub struct Tpm2bName {
     pub size: u16,
     #[serde(with = "serde_bytes")]
-    pub name: Option<Vec<u8>>
+    pub name: Option<Vec<u8>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -354,7 +639,7 @@ pub struct AuthenticatorData {
     pub extensions: serde_cbor::Value,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 #[repr(u16)]
 pub enum AttestationType {
@@ -384,7 +669,7 @@ impl AttestationType {
             0x8018 => AttestationType::TpmStAttestQuote,
             0x8019 => AttestationType::TpmStAttestTime,
             0x801A => AttestationType::TpmStAttestCreation,
-            _ => AttestationType::None
+            _ => AttestationType::None,
         }
     }
 }
@@ -767,12 +1052,31 @@ impl TpmAlgId {
             0x0042 => TpmAlgId::CBC,
             0x0043 => TpmAlgId::CFB,
             0x0044 => TpmAlgId::ECB,
-            _ => TpmAlgId::Error
+            _ => TpmAlgId::Error,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq)]
+pub enum CoseAlgorithmIdentifier {
+    EC2 = -7,
+    RSA = -257,
+    RS1 = -65535,
+    NotSupported,
+}
+
+impl CoseAlgorithmIdentifier {
+    pub fn from_i64(alg: i64) -> CoseAlgorithmIdentifier {
+        match alg {
+            -65535 => CoseAlgorithmIdentifier::RS1,
+            -257 => CoseAlgorithmIdentifier::RSA,
+            -7 => CoseAlgorithmIdentifier::EC2,
+            _ => CoseAlgorithmIdentifier::NotSupported,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum TpmEccCurve {
     None = 0x0000,
@@ -808,14 +1112,14 @@ impl TpmEccCurve {
             0x0032 => TpmEccCurve::BPP512R1,
             0x0040 => TpmEccCurve::Curve25519,
             0x0041 => TpmEccCurve::Curve448,
-            _ => TpmEccCurve::None
+            _ => TpmEccCurve::None,
         }
     }
 }
 
 pub fn deserialize_cert_info<'de, D>(deserializer: D) -> Result<CertInfo, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     struct CertInfoFromBuffer(PhantomData<fn() -> CertInfo>);
 
@@ -826,11 +1130,17 @@ pub fn deserialize_cert_info<'de, D>(deserializer: D) -> Result<CertInfo, D::Err
             formatter.write_str("a valid CertInfo buffer")
         }
 
-        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E> where E: serde::de::Error {
+        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
             CertInfo::from_vec(v).map_err(|e| serde::de::Error::custom(e))
         }
 
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: serde::de::Error {
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
             self.visit_byte_buf(v.to_vec())
         }
     }
@@ -839,8 +1149,8 @@ pub fn deserialize_cert_info<'de, D>(deserializer: D) -> Result<CertInfo, D::Err
 }
 
 pub fn deserialize_public_area<'de, D>(deserializer: D) -> Result<PublicArea, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     struct PublicAreaFromBuffer(PhantomData<fn() -> PublicArea>);
 
@@ -851,14 +1161,79 @@ pub fn deserialize_public_area<'de, D>(deserializer: D) -> Result<PublicArea, D:
             formatter.write_str("a valid PublicArea buffer")
         }
 
-        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E> where E: serde::de::Error {
+        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
             PublicArea::from_vec(v).map_err(|e| serde::de::Error::custom(e))
         }
 
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: serde::de::Error {
+        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
             self.visit_byte_buf(v.to_vec())
         }
     }
 
     deserializer.deserialize_any(PublicAreaFromBuffer(PhantomData))
+}
+
+pub enum TpmVendor {
+    AMD,
+    Atmel,
+    Broadcom,
+    Cisco,
+    FlysliceTechnologies,
+    FuzhouRockchip,
+    Google,
+    HPE,
+    Huawei,
+    IBM,
+    Infineon,
+    Intel,
+    Lenovo,
+    Microsoft,
+    NationalSemiconductor,
+    Nationz,
+    NuvotonTechnology,
+    Qualcomm,
+    Samsung,
+    Sinosun,
+    SMSC,
+    StMicroelectronics,
+    TexasInstruments,
+    Winbond,
+}
+
+impl TpmVendor {
+    pub fn try_from_bytes(b: &[u8; 8]) -> Result<Self, Error> {
+        match b {
+            b"414d4400" => Ok(TpmVendor::AMD),
+            b"41544D4C" => Ok(TpmVendor::Atmel),
+            b"4252434D" => Ok(TpmVendor::Broadcom),
+            b"4353434F" => Ok(TpmVendor::Cisco),
+            b"464C5953" => Ok(TpmVendor::FlysliceTechnologies),
+            b"524F4343" => Ok(TpmVendor::FuzhouRockchip),
+            b"474F4F47" => Ok(TpmVendor::Google),
+            b"48504500" => Ok(TpmVendor::HPE),
+            b"48495349" => Ok(TpmVendor::Huawei),
+            b"49424D00" => Ok(TpmVendor::IBM),
+            b"49465800" => Ok(TpmVendor::Infineon),
+            b"494E5443" => Ok(TpmVendor::Intel),
+            b"4C454E00" => Ok(TpmVendor::Lenovo),
+            b"4D534654" => Ok(TpmVendor::Microsoft),
+            b"4E534D20" => Ok(TpmVendor::NationalSemiconductor),
+            b"4E545A00" => Ok(TpmVendor::Nationz),
+            b"4E544300" => Ok(TpmVendor::NuvotonTechnology),
+            b"51434F4D" => Ok(TpmVendor::Qualcomm),
+            b"534D534E" => Ok(TpmVendor::Samsung),
+            b"534E5300" => Ok(TpmVendor::Sinosun),
+            b"534D5343" => Ok(TpmVendor::SMSC),
+            b"53544D20" => Ok(TpmVendor::StMicroelectronics),
+            b"54584E00" => Ok(TpmVendor::TexasInstruments),
+            b"57454300" => Ok(TpmVendor::Winbond),
+            _ => Err(Error::Other("Could not find vendor for given bytes".to_owned())),
+        }
+    }
 }

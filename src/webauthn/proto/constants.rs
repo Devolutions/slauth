@@ -1,3 +1,5 @@
+use x509_parser::der_parser::{oid, Oid};
+
 pub const WEBAUTHN_CHALLENGE_LENGTH: usize = 32;
 pub const WEBAUTHN_CREDENTIAL_ID_LENGTH: usize = 16;
 
@@ -29,3 +31,11 @@ pub const ECDSA_Y_PREFIX_UNCOMPRESSED: u8 = 4;
 pub const ECDSA_CURVE_P256: i64 = 1;
 pub const ECDSA_CURVE_P384: i64 = 2;
 pub const ECDSA_CURVE_P521: i64 = 3;
+
+pub const TPM_GENERATED_VALUE: u32 = 0xff544347;
+
+pub const TCG_AT_TPM_MANUFACTURER: &[u8] = &oid!(raw 2.23.133.2.1);
+pub const TCG_AT_TPM_MODEL: &[u8] = &oid!(raw 2.23.133.2.2);
+pub const TCG_AT_TPM_VERSION: &[u8] = &oid!(raw 2.23.133.2.3);
+
+pub const TCG_KP_AIK_CERTIFICATE: &Oid = &oid!(2.23.133 .8 .3);
