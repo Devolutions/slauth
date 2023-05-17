@@ -560,7 +560,3 @@ fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn Verificati
         ))))
     }
 }
-
-// fn verify_tpm(tpm: &TPM, auth_data: &[u8], client_data_hash: &[u8]) -> Result<(), Error> {
-//
-// }
