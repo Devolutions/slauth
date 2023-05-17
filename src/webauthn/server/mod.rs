@@ -9,11 +9,13 @@ use crate::webauthn::{
     error::{CredentialError, Error},
     proto::{
         constants::{
-            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2,
-            WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG,
-            WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET,
+            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
         },
-        raw_message::{AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CredentialPublicKey, Message, TpmAlgId},
+        raw_message::{
+            AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CredentialPublicKey, Message,
+            TpmAlgId,
+        },
         web_message::{
             AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
             PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
@@ -98,7 +100,7 @@ impl CredentialCreationBuilder {
             challenge,
             pub_key_cred_params: vec![PublicKeyCredentialParameters {
                 auth_type: PublicKeyCredentialType::PublicKey,
-                alg: WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2,
+                alg: CoseAlgorithmIdentifier::EC2.into(),
             }],
             timeout: None,
             exclude_credentials: self.exclude_credentials,
@@ -387,9 +389,9 @@ impl CredentialRequestBuilder {
 }
 
 fn get_alg_from_cose(id: i64) -> &'static SignatureAlgorithm {
-    match id {
-        WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2 => &webpki::ECDSA_P256_SHA256,
-        WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA => &webpki::RSA_PKCS1_2048_8192_SHA256,
+    match CoseAlgorithmIdentifier::from(id) {
+        CoseAlgorithmIdentifier::EC2 => &webpki::ECDSA_P256_SHA256,
+        CoseAlgorithmIdentifier::RSA => &webpki::RSA_PKCS1_2048_8192_SHA256,
         _ => &webpki::ECDSA_P256_SHA256,
     }
 }
@@ -430,7 +432,7 @@ impl CredentialRequestVerifier {
             .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
         let signature = base64::decode(
-            &response
+            response
                 .signature
                 .as_ref()
                 .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?,
@@ -545,7 +547,7 @@ impl CredentialRequestVerifier {
 }
 
 fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn VerificationAlgorithm, Error> {
-    if id == WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2 {
+    if CoseAlgorithmIdentifier::from(id) == CoseAlgorithmIdentifier::EC2 {
         match curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),

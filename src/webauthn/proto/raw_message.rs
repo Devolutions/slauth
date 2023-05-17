@@ -77,7 +77,7 @@ pub struct TPM {
 
 impl TPM {
     pub fn verify_structure(&self) -> Result<CertInfo, Error> {
-        if CoseAlgorithmIdentifier::from_i64(self.alg) == CoseAlgorithmIdentifier::NotSupported {
+        if CoseAlgorithmIdentifier::from(self.alg) == CoseAlgorithmIdentifier::NotSupported {
             return Err(Error::Other("Algorithm not supported".to_owned()));
         }
 
@@ -137,7 +137,7 @@ impl TPM {
         let mut buf = auth_data.to_vec();
         buf.extend_from_slice(client_data_hash);
 
-        let att_to_be_signed = match CoseAlgorithmIdentifier::from_i64(self.alg) {
+        let att_to_be_signed = match self.alg.into() {
             CoseAlgorithmIdentifier::RS1 => {
                 let mut hasher = Sha1::new();
                 hasher.update(buf.as_slice());
@@ -161,7 +161,7 @@ impl TPM {
     }
 
     pub fn verify_signature(&self, cert: &[u8]) -> Result<(), Error> {
-        let scheme = match CoseAlgorithmIdentifier::from_i64(self.alg) {
+        let scheme = match self.alg.into() {
             CoseAlgorithmIdentifier::RS1 => Pkcs1v15Sign::new::<Sha1>(),
             CoseAlgorithmIdentifier::RSA => Pkcs1v15Sign::new::<Sha256>(),
             _ => return Err(Error::Other("Invalid hash algorithm".to_owned())),
@@ -176,11 +176,7 @@ impl TPM {
     pub fn verify_public_key(&mut self, credential_pk: &CredentialPublicKey) -> Result<(), Error> {
         let pub_area = PublicArea::from_vec(std::mem::take(&mut self.pub_area))?;
 
-        match (
-            CoseAlgorithmIdentifier::from_i64(credential_pk.key_type),
-            pub_area.parameters,
-            pub_area.unique,
-        ) {
+        match (credential_pk.key_type.into(), pub_area.parameters, pub_area.unique) {
             (CoseAlgorithmIdentifier::RSA, AlgParameters::RSA(_), TpmuPublicId::Rsa(modulus)) => {
                 if credential_pk.coords.to_vec() != modulus {
                     return Err(Error::Other("PubArea mismatch".to_owned()));
@@ -217,28 +213,24 @@ impl TPM {
 
     pub fn verify_cert(&self) -> Result<Vec<u8>, Error> {
         if let Some(serde_cbor::Value::Array(cert_arr)) = self.x5c.as_ref() {
-            match cert_arr.first() {
-                Some(serde_cbor::Value::Bytes(aik_cert)) => {
-                    let (_, x509) = X509CertificateParser::new()
-                        .with_deep_parse_extensions(true)
-                        .parse(aik_cert)
-                        .map_err(|_| Error::Other("Invalid certificate".to_owned()))?;
+            if let Some(serde_cbor::Value::Bytes(aik_cert)) = cert_arr.first() {
+                let (_, x509) = X509CertificateParser::new()
+                    .with_deep_parse_extensions(true)
+                    .parse(aik_cert)
+                    .map_err(|_| Error::Other("Invalid certificate".to_owned()))?;
 
-                    if x509.version != X509Version::V3 {
-                        return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
-                    }
-
-                    if x509.subject.iter().next().is_some() {
-                        return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
-                    }
-
-                    self.verify_subject_alternative_name(&x509)?;
-                    self.verify_extended_key_usage(&x509)?;
-                    self.verify_basic_constraints(&x509)?;
-                    return Ok(aik_cert.to_vec());
+                if x509.version != X509Version::V3 {
+                    return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
                 }
 
-                _ => {}
+                if x509.subject.iter().next().is_some() {
+                    return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+                }
+
+                self.verify_subject_alternative_name(&x509)?;
+                self.verify_extended_key_usage(&x509)?;
+                self.verify_basic_constraints(&x509)?;
+                return Ok(aik_cert.to_vec());
             }
         }
 
@@ -366,18 +358,13 @@ pub struct TPM2BDigest {
     buffer: Option<Vec<u8>>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub enum AlgParameters {
+    #[default]
     None,
     RSA(RsaAlgParameters),
     ECC(EccAlgParameters),
-}
-
-impl Default for AlgParameters {
-    fn default() -> Self {
-        AlgParameters::None
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -474,17 +461,12 @@ impl PublicArea {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub enum TpmuPublicId {
+    #[default]
+    None,
     Rsa(Vec<u8>),
     Ecc(EccPoint),
-    None,
-}
-
-impl Default for TpmuPublicId {
-    fn default() -> Self {
-        TpmuPublicId::None
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -639,10 +621,10 @@ pub struct AuthenticatorData {
     pub extensions: serde_cbor::Value,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Default, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-#[repr(u16)]
 pub enum AttestationType {
+    #[default]
     None,
     TpmStAttestNv = 0x8014,
     TpmStAttestCommandAudit = 0x8015,
@@ -651,12 +633,6 @@ pub enum AttestationType {
     TpmStAttestQuote = 0x8018,
     TpmStAttestTime = 0x8019,
     TpmStAttestCreation = 0x801A,
-}
-
-impl Default for AttestationType {
-    fn default() -> Self {
-        AttestationType::None
-    }
 }
 
 impl AttestationType {
@@ -1065,9 +1041,9 @@ pub enum CoseAlgorithmIdentifier {
     NotSupported,
 }
 
-impl CoseAlgorithmIdentifier {
-    pub fn from_i64(alg: i64) -> CoseAlgorithmIdentifier {
-        match alg {
+impl From<i64> for CoseAlgorithmIdentifier {
+    fn from(value: i64) -> Self {
+        match value {
             -65535 => CoseAlgorithmIdentifier::RS1,
             -257 => CoseAlgorithmIdentifier::RSA,
             -7 => CoseAlgorithmIdentifier::EC2,
@@ -1076,8 +1052,18 @@ impl CoseAlgorithmIdentifier {
     }
 }
 
+impl From<CoseAlgorithmIdentifier> for i64 {
+    fn from(value: CoseAlgorithmIdentifier) -> Self {
+        match value {
+            CoseAlgorithmIdentifier::RS1 => -65535,
+            CoseAlgorithmIdentifier::RSA => -257,
+            CoseAlgorithmIdentifier::EC2 => -7,
+            _ => -65536, //Unassigned
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
 pub enum TpmEccCurve {
     None = 0x0000,
     NISTP192 = 0x0001,
