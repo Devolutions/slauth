@@ -10,7 +10,7 @@ use crate::webauthn::{
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use hmac::digest::FixedOutput;
-use rsa::{pkcs1::DecodeRsaPublicKey, Pkcs1v15Sign, RsaPublicKey};
+use rsa::{Pkcs1v15Sign, RsaPublicKey, pkcs8::DecodePublicKey};
 use serde::{de::Visitor, Deserializer};
 use serde_cbor::Value;
 use serde_derive::*;
@@ -124,7 +124,9 @@ impl TPM {
                 };
 
                 if hash_name != name.to_vec() {
-                    return Err(Error::Other("PubArea hash invalid".to_owned()));
+                    let hash_name = base64::encode(hash_name);
+                    let name = base64::encode(name);
+                    return Err(Error::Other(format!("PubArea hash invalid: hash_name {hash_name} - name {name}")));
                 }
             }
             _ => return Err(Error::Other("Attestation type invalid".to_owned())),
@@ -161,50 +163,56 @@ impl TPM {
     }
 
     pub fn verify_signature(&self, cert: &[u8]) -> Result<(), Error> {
-        let scheme = match self.alg.into() {
-            CoseAlgorithmIdentifier::RS1 => Pkcs1v15Sign::new::<Sha1>(),
-            CoseAlgorithmIdentifier::RSA => Pkcs1v15Sign::new::<Sha256>(),
+        let (scheme, hashed) = match self.alg.into() {
+            CoseAlgorithmIdentifier::RS1 => {
+                (Pkcs1v15Sign::new::<Sha1>(), sha1::Sha1::digest(self.cert_info.as_slice()).as_slice().to_vec())
+            },
+            CoseAlgorithmIdentifier::RSA => {
+                (Pkcs1v15Sign::new::<Sha256>(), sha2::Sha256::digest(self.cert_info.as_slice()).as_slice().to_vec())
+            },
             _ => return Err(Error::Other("Invalid hash algorithm".to_owned())),
         };
 
-        let public_key = RsaPublicKey::from_pkcs1_der(cert).map_err(|_| Error::Other("Invalid certificate".to_owned()))?;
+        let public_key = RsaPublicKey::from_public_key_der(cert).map_err(|e| Error::Other(format!("verify_signature - Invalid certificate: {:?}", e)))?;
         public_key
-            .verify(scheme, self.cert_info.as_slice(), self.sig.as_slice())
-            .map_err(|_| Error::Other("Signature verification failed".to_owned()))
+            .verify(scheme.clone(), hashed.as_slice(), self.sig.as_slice())
+            .map_err(|e| Error::Other(format!("Signature verification failed: {:?} - {:?}", e, scheme)))
     }
 
     pub fn verify_public_key(&mut self, credential_pk: &CredentialPublicKey) -> Result<(), Error> {
         let pub_area = PublicArea::from_vec(std::mem::take(&mut self.pub_area))?;
 
-        match (credential_pk.key_type.into(), pub_area.parameters, pub_area.unique) {
+        match (credential_pk.alg.into(), pub_area.parameters.clone(), pub_area.unique.clone()) {
             (CoseAlgorithmIdentifier::RSA, AlgParameters::RSA(_), TpmuPublicId::Rsa(modulus)) => {
                 if credential_pk.coords.to_vec() != modulus {
-                    return Err(Error::Other("PubArea mismatch".to_owned()));
+                    // return Err(Error::Other("PubArea mismatch".to_owned()));
+                    return Err(Error::Other(format!("PubArea mismatch coords: {:?} - modulus: {:?}", credential_pk.coords.to_vec(), modulus)));
                 }
             }
             (CoseAlgorithmIdentifier::EC2, AlgParameters::ECC(params), TpmuPublicId::Ecc(ecc_points)) => {
-                match (credential_pk.curve, params.curve_id) {
+                match (credential_pk.curve.clone(), params.curve_id.clone()) {
                     (ECDSA_CURVE_P256, TpmEccCurve::NISTP256)
                     | (ECDSA_CURVE_P384, TpmEccCurve::NISTP384)
                     | (ECDSA_CURVE_P521, TpmEccCurve::NISTP521) => {}
                     _ => {
-                        return Err(Error::Other("PubArea mismatch".to_owned()));
+                        // return Err(Error::Other("PubArea mismatch".to_owned()));
+                        return Err(Error::Other(format!("PubArea mismatch cred_pk.curve: {:?} - params.curve_id: {:?}", credential_pk.curve, params.curve_id)));
                     }
                 }
 
                 match credential_pk.coords {
                     Coordinates::Compressed { .. } => {
-                        return Err(Error::Other("PubArea mismatch".to_owned()));
+                        return Err(Error::Other("PubArea mismatch Coordinates::Compressed".to_owned()));
                     }
                     Coordinates::Uncompressed { x, y } => {
                         if x.as_slice() != ecc_points.x.as_slice() || y.as_slice() != ecc_points.y.as_slice() {
-                            return Err(Error::Other("PubArea mismatch".to_owned()));
+                            return Err(Error::Other(format!("PubArea mismatch x,y: {:?}{:?} - ecc_points: {:?}{:?}", x.as_slice(), y.as_slice(), ecc_points.x.as_slice(), ecc_points.y.as_slice())));
                         }
                     }
                 }
             }
             _ => {
-                return Err(Error::Other("PubArea mismatch".to_owned()));
+                return Err(Error::Other(format!("PubArea mismatch: {:?} - {:?} - {:?} - {:?}", credential_pk , CoseAlgorithmIdentifier::from(credential_pk.key_type), pub_area.parameters, pub_area.unique)));
             }
         }
 
@@ -217,7 +225,7 @@ impl TPM {
                 let (_, x509) = X509CertificateParser::new()
                     .with_deep_parse_extensions(true)
                     .parse(aik_cert)
-                    .map_err(|_| Error::Other("Invalid certificate".to_owned()))?;
+                    .map_err(|e| Error::Other(format!("verify_cert - Invalid certificate: {:?}", e)))?;
 
                 if x509.version != X509Version::V3 {
                     return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
@@ -230,7 +238,7 @@ impl TPM {
                 self.verify_subject_alternative_name(&x509)?;
                 self.verify_extended_key_usage(&x509)?;
                 self.verify_basic_constraints(&x509)?;
-                return Ok(aik_cert.to_vec());
+                return Ok(x509.public_key().raw.to_vec());
             }
         }
 
@@ -523,10 +531,8 @@ impl CertInfo {
         let mut attested_qualified_name = vec![0u8; attested_qualified_name_length as usize];
         cursor.read_exact(&mut attested_qualified_name)?;
 
-        let mut cursor = Cursor::new(attested_name_buffer);
+        let mut cursor = Cursor::new(attested_name_buffer.as_slice());
         let attested_name_alg = cursor.read_u16::<BigEndian>()?;
-        let mut attested_name = vec![0u8; cursor.remaining()];
-        cursor.read_exact(&mut attested_name[..])?;
 
         Ok(CertInfo {
             magic,
@@ -547,7 +553,7 @@ impl CertInfo {
             },
             firmware_version,
             alg: attested_name_alg,
-            attested_name: (attested_name, attested_qualified_name),
+            attested_name: (attested_name_buffer, attested_qualified_name),
         })
     }
 }
@@ -1033,7 +1039,7 @@ impl TpmAlgId {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum CoseAlgorithmIdentifier {
     EC2 = -7,
     RSA = -257,
