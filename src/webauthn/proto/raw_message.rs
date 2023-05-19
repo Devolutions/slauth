@@ -11,16 +11,13 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use hmac::digest::FixedOutput;
 use rsa::{pkcs8::DecodePublicKey, Pkcs1v15Sign, RsaPublicKey};
-use serde::{de::Visitor, Deserializer};
 use serde_cbor::Value;
 use serde_derive::*;
 use sha1::{Digest, Sha1};
 use sha2::Sha256;
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Formatter,
     io::{Cursor, Read},
-    marker::PhantomData,
     str::FromStr,
 };
 use x509_parser::{
@@ -1149,68 +1146,6 @@ impl TpmEccCurve {
             _ => TpmEccCurve::None,
         }
     }
-}
-
-pub fn deserialize_cert_info<'de, D>(deserializer: D) -> Result<CertInfo, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct CertInfoFromBuffer(PhantomData<fn() -> CertInfo>);
-
-    impl<'de> Visitor<'de> for CertInfoFromBuffer {
-        type Value = CertInfo;
-
-        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-            formatter.write_str("a valid CertInfo buffer")
-        }
-
-        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            CertInfo::from_vec(v).map_err(|e| serde::de::Error::custom(e))
-        }
-
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            self.visit_byte_buf(v.to_vec())
-        }
-    }
-
-    deserializer.deserialize_any(CertInfoFromBuffer(PhantomData))
-}
-
-pub fn deserialize_public_area<'de, D>(deserializer: D) -> Result<PublicArea, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct PublicAreaFromBuffer(PhantomData<fn() -> PublicArea>);
-
-    impl<'de> Visitor<'de> for PublicAreaFromBuffer {
-        type Value = PublicArea;
-
-        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-            formatter.write_str("a valid PublicArea buffer")
-        }
-
-        fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            PublicArea::from_vec(v).map_err(|e| serde::de::Error::custom(e))
-        }
-
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            self.visit_byte_buf(v.to_vec())
-        }
-    }
-
-    deserializer.deserialize_any(PublicAreaFromBuffer(PhantomData))
 }
 
 pub enum TpmVendor {
