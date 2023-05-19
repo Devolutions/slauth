@@ -33,6 +33,7 @@ base32 = "0.4"
 hex = "0.4"
 rsa = "0.9.2"
 x509-parser = "0.15.0"
+uuid = "1.2"
 
 base64 = { version = "0.13", optional = true }
 byteorder = { version = "1.4", optional = true }

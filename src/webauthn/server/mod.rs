@@ -3,6 +3,7 @@ use ring::{
     signature::{UnparsedPublicKey, VerificationAlgorithm},
 };
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 use webpki::{EndEntityCert, SignatureAlgorithm};
 
 use crate::webauthn::{
@@ -461,8 +462,9 @@ impl CredentialRequestVerifier {
             ))));
         }
 
-        if let Some(user_handle) = &response.user_handle {
-            if *user_handle != self.user_handle {
+        if let Some(encoded_user_handle) = &response.user_handle {
+            let user_handle = Uuid::from_slice(base64::decode_config(encoded_user_handle, base64::URL_SAFE)?.as_slice())?.to_string();
+            if user_handle != self.user_handle {
                 return Err(Error::CredentialError(CredentialError::Other(String::from(
                     "User handles do not match",
                 ))));

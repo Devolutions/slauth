@@ -7,6 +7,7 @@ use std::{
     fmt::{Display, Formatter},
     io::Error as IoError,
 };
+use uuid::Error as UuidError;
 use webpki::Error as WebPkiError;
 
 #[derive(Debug)]
@@ -62,6 +63,7 @@ pub enum Error {
     Version,
     CredentialError(CredentialError),
     TpmError(TpmError),
+    UuidError(UuidError),
     Other(String),
 }
 
@@ -96,6 +98,12 @@ impl From<Unspecified> for Error {
 }
 
 impl StdError for Error {}
+
+impl From<UuidError> for Error {
+    fn from(e: UuidError) -> Self {
+        Error::UuidError(e)
+    }
+}
 
 impl Display for CredentialError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
@@ -132,6 +140,7 @@ impl Display for Error {
             WebPkiError(wp_e) => wp_e.fmt(f),
             RingError(r_e) => r_e.fmt(f),
             TpmError(tpm_e) => tpm_e.fmt(f),
+            UuidError(uuid_e) => uuid_e.fmt(f),
         }
     }
 }
