@@ -48,6 +48,7 @@ pub enum TpmError {
     PublicKeyCoordinatesMismatch,
     SignatureHashInvalid(i64),
     SignatureValidationFailed,
+    TpmVendorNotFound,
 }
 
 #[derive(Debug)]
@@ -164,6 +165,7 @@ impl Display for TpmError {
             }
             TpmError::SignatureHashInvalid(hash) => write!(f, "Signature hash not supported {}", hash),
             TpmError::SignatureValidationFailed => write!(f, "Signature validation failed"),
+            TpmError::TpmVendorNotFound => write!(f, "TPM Vendor not found"),
         }
     }
 }

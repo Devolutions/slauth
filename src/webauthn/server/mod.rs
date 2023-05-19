@@ -14,8 +14,8 @@ use crate::webauthn::{
         },
         raw_message::{
             AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CredentialPublicKey, Message,
-            TpmAlgId,
         },
+        tpm::TpmAlgId,
         web_message::{
             AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
             PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,

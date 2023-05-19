@@ -60,6 +60,7 @@ wasm-bindgen-test = "0.3.10"
 [target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
 saphir = { version = "3.1.0", git = "https://github.com/richerarc/saphir.git", tag = "v3.1.0", features = ["full"] } # not released on crates.io yet, required for dependancies
 tokio = { version = "1", features = ["full"] }
+async-stream = ">= 0.3, < 0.3.4" # 0.3.4 and up currently break saphir
 
 [dev-dependencies]
 serde_json = "1.0"
