@@ -1,5 +1,5 @@
 use crate::webauthn::{
-    error::Error,
+    error::{Error, TpmError},
     proto::constants::{
         ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_CURVE_P521, ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE,
         ECDSA_Y_PREFIX_UNCOMPRESSED, TCG_AT_TPM_MANUFACTURER, TCG_AT_TPM_MODEL, TCG_AT_TPM_VERSION, TCG_KP_AIK_CERTIFICATE,
@@ -10,7 +10,7 @@ use crate::webauthn::{
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use hmac::digest::FixedOutput;
-use rsa::{Pkcs1v15Sign, RsaPublicKey, pkcs8::DecodePublicKey};
+use rsa::{pkcs8::DecodePublicKey, Pkcs1v15Sign, RsaPublicKey};
 use serde::{de::Visitor, Deserializer};
 use serde_cbor::Value;
 use serde_derive::*;
@@ -78,30 +78,25 @@ pub struct TPM {
 impl TPM {
     pub fn verify_structure(&self) -> Result<CertInfo, Error> {
         if CoseAlgorithmIdentifier::from(self.alg) == CoseAlgorithmIdentifier::NotSupported {
-            return Err(Error::Other("Algorithm not supported".to_owned()));
+            return Err(Error::TpmError(TpmError::AlgorithmNotSupported));
         }
 
-        match &self.ver {
-            Value::Text(ver) => {
-                if ver != "2.0" {
-                    return Err(Error::Other("Attestation Statement versiopn unsupported".to_owned()));
-                }
+        if let Value::Text(ver) = &self.ver {
+            if ver != "2.0" {
+                return Err(Error::TpmError(TpmError::AttestationVersionNotSupported));
             }
-            _ => {
-                return Err(Error::Other("Attestation Statement version invalid".to_owned()));
-            }
+        } else {
+            return Err(Error::TpmError(TpmError::AttestationVersionNotSupported));
         }
 
         if self.x5c.is_none() {
-            return Err(Error::Other(
-                "Attestation Identity Key certificate and its certificate chain is missing".to_owned(),
-            ));
+            return Err(Error::TpmError(TpmError::CertificateMissing));
         }
 
         let cert_info = CertInfo::from_buf(self.cert_info.as_slice())?;
 
         if cert_info.magic != TPM_GENERATED_VALUE {
-            return Err(Error::Other("Magic is not a TPM generated structure".to_owned()));
+            return Err(Error::TpmError(TpmError::MagicInvalid));
         }
 
         Ok(cert_info)
@@ -120,16 +115,14 @@ impl TPM {
                         hash_name.append(&mut pub_area_hash);
                         hash_name
                     }
-                    _ => return Err(Error::Other("PubArea hash unknown".to_owned())),
+                    _ => return Err(Error::TpmError(TpmError::PubAreaHashUnknown(name_alg.into()))),
                 };
 
                 if hash_name != name.to_vec() {
-                    let hash_name = base64::encode(hash_name);
-                    let name = base64::encode(name);
-                    return Err(Error::Other(format!("PubArea hash invalid: hash_name {hash_name} - name {name}")));
+                    return Err(Error::TpmError(TpmError::AttestedNamePubAreaMismatch));
                 }
             }
-            _ => return Err(Error::Other("Attestation type invalid".to_owned())),
+            _ => return Err(Error::TpmError(TpmError::AttestationTypeInvalid)),
         }
 
         Ok(())
@@ -150,7 +143,7 @@ impl TPM {
                 hasher.update(buf.as_slice());
                 Ok(hasher.finalize().to_vec())
             }
-            _ => Err(Error::Other("Invalid hash algorithm".to_owned())),
+            _ => Err(Error::TpmError(TpmError::AttToBeSignedHashAlgorithmInvalid(self.alg))),
         }?;
 
         if let Some(extra_data) = extra_data {
@@ -159,60 +152,61 @@ impl TPM {
             }
         }
 
-        Err(Error::Other("extra_data does not match att_to_be_signed".to_owned()))
+        Err(Error::TpmError(TpmError::AttToBeSignedMismatch))
     }
 
     pub fn verify_signature(&self, cert: &[u8]) -> Result<(), Error> {
         let (scheme, hashed) = match self.alg.into() {
-            CoseAlgorithmIdentifier::RS1 => {
-                (Pkcs1v15Sign::new::<Sha1>(), sha1::Sha1::digest(self.cert_info.as_slice()).as_slice().to_vec())
-            },
-            CoseAlgorithmIdentifier::RSA => {
-                (Pkcs1v15Sign::new::<Sha256>(), sha2::Sha256::digest(self.cert_info.as_slice()).as_slice().to_vec())
-            },
-            _ => return Err(Error::Other("Invalid hash algorithm".to_owned())),
+            CoseAlgorithmIdentifier::RS1 => (
+                Pkcs1v15Sign::new::<Sha1>(),
+                sha1::Sha1::digest(self.cert_info.as_slice()).as_slice().to_vec(),
+            ),
+            CoseAlgorithmIdentifier::RSA => (
+                Pkcs1v15Sign::new::<Sha256>(),
+                sha2::Sha256::digest(self.cert_info.as_slice()).as_slice().to_vec(),
+            ),
+            _ => return Err(Error::TpmError(TpmError::SignatureHashInvalid(self.alg))),
         };
 
-        let public_key = RsaPublicKey::from_public_key_der(cert).map_err(|e| Error::Other(format!("verify_signature - Invalid certificate: {:?}", e)))?;
+        let public_key = RsaPublicKey::from_public_key_der(cert)
+            .map_err(|e| Error::Other(format!("verify_signature - Invalid certificate: {:?}", e)))?;
         public_key
-            .verify(scheme.clone(), hashed.as_slice(), self.sig.as_slice())
-            .map_err(|e| Error::Other(format!("Signature verification failed: {:?} - {:?}", e, scheme)))
+            .verify(scheme, hashed.as_slice(), self.sig.as_slice())
+            .map_err(|_| Error::TpmError(TpmError::SignatureValidationFailed))
     }
 
     pub fn verify_public_key(&mut self, credential_pk: &CredentialPublicKey) -> Result<(), Error> {
         let pub_area = PublicArea::from_vec(std::mem::take(&mut self.pub_area))?;
 
-        match (credential_pk.alg.into(), pub_area.parameters.clone(), pub_area.unique.clone()) {
+        match (credential_pk.alg.into(), pub_area.parameters, pub_area.unique) {
             (CoseAlgorithmIdentifier::RSA, AlgParameters::RSA(_), TpmuPublicId::Rsa(modulus)) => {
                 if credential_pk.coords.to_vec() != modulus {
-                    // return Err(Error::Other("PubArea mismatch".to_owned()));
-                    return Err(Error::Other(format!("PubArea mismatch coords: {:?} - modulus: {:?}", credential_pk.coords.to_vec(), modulus)));
+                    return Err(Error::TpmError(TpmError::PublicKeyParametersMismatch(credential_pk.alg)));
                 }
             }
             (CoseAlgorithmIdentifier::EC2, AlgParameters::ECC(params), TpmuPublicId::Ecc(ecc_points)) => {
-                match (credential_pk.curve.clone(), params.curve_id.clone()) {
+                match (credential_pk.curve, params.curve_id) {
                     (ECDSA_CURVE_P256, TpmEccCurve::NISTP256)
                     | (ECDSA_CURVE_P384, TpmEccCurve::NISTP384)
                     | (ECDSA_CURVE_P521, TpmEccCurve::NISTP521) => {}
                     _ => {
-                        // return Err(Error::Other("PubArea mismatch".to_owned()));
-                        return Err(Error::Other(format!("PubArea mismatch cred_pk.curve: {:?} - params.curve_id: {:?}", credential_pk.curve, params.curve_id)));
+                        return Err(Error::TpmError(TpmError::PublicKeyParametersMismatch(credential_pk.alg)));
                     }
                 }
 
                 match credential_pk.coords {
                     Coordinates::Compressed { .. } => {
-                        return Err(Error::Other("PubArea mismatch Coordinates::Compressed".to_owned()));
+                        return Err(Error::TpmError(TpmError::PublicKeyCoordinatesMismatch));
                     }
                     Coordinates::Uncompressed { x, y } => {
                         if x.as_slice() != ecc_points.x.as_slice() || y.as_slice() != ecc_points.y.as_slice() {
-                            return Err(Error::Other(format!("PubArea mismatch x,y: {:?}{:?} - ecc_points: {:?}{:?}", x.as_slice(), y.as_slice(), ecc_points.x.as_slice(), ecc_points.y.as_slice())));
+                            return Err(Error::TpmError(TpmError::PublicKeyCoordinatesMismatch));
                         }
                     }
                 }
             }
             _ => {
-                return Err(Error::Other(format!("PubArea mismatch: {:?} - {:?} - {:?} - {:?}", credential_pk , CoseAlgorithmIdentifier::from(credential_pk.key_type), pub_area.parameters, pub_area.unique)));
+                return Err(Error::TpmError(TpmError::PubAreaMismatch));
             }
         }
 
@@ -225,14 +219,14 @@ impl TPM {
                 let (_, x509) = X509CertificateParser::new()
                     .with_deep_parse_extensions(true)
                     .parse(aik_cert)
-                    .map_err(|e| Error::Other(format!("verify_cert - Invalid certificate: {:?}", e)))?;
+                    .map_err(|_| Error::TpmError(TpmError::CertificateParsing))?;
 
                 if x509.version != X509Version::V3 {
-                    return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+                    return Err(Error::TpmError(TpmError::CertificateVersionInvalid));
                 }
 
                 if x509.subject.iter().next().is_some() {
-                    return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+                    return Err(Error::TpmError(TpmError::CertificateSubjectInvalid));
                 }
 
                 self.verify_subject_alternative_name(&x509)?;
@@ -242,13 +236,13 @@ impl TPM {
             }
         }
 
-        Err(Error::Other("Certificate missing".to_owned()))
+        Err(Error::TpmError(TpmError::CertificateMissing))
     }
 
     fn verify_subject_alternative_name(&self, x509: &X509Certificate) -> Result<(), Error> {
         if let Ok(Some(subject_alt_name)) = x509.subject_alternative_name() {
             if !subject_alt_name.critical {
-                return Err(Error::Other("Attestation certificate requirement not met".to_owned()));
+                return Err(Error::TpmError(TpmError::CertificateExtensionNotCritical));
             }
 
             if subject_alt_name.value.general_names.iter().any(|general_name| {
@@ -293,7 +287,9 @@ impl TPM {
             }
         }
 
-        Err(Error::Other("Attestation certificate requirement not met".to_owned()))
+        Err(Error::TpmError(TpmError::CertificateExtensionRequirementNotMet(
+            "Subject Alternative Name".to_owned(),
+        )))
     }
 
     fn verify_extended_key_usage(&self, x509: &X509Certificate) -> Result<(), Error> {
@@ -303,7 +299,9 @@ impl TPM {
             }
         }
 
-        Err(Error::Other("Invalid extended key usage".to_owned()))
+        Err(Error::TpmError(TpmError::CertificateRequirementNotMet(
+            "Extended Key Usage".to_owned(),
+        )))
     }
 
     fn verify_basic_constraints(&self, x509: &X509Certificate) -> Result<(), Error> {
@@ -313,7 +311,9 @@ impl TPM {
             }
         }
 
-        Err(Error::Other("Invalid basic constraints".to_owned()))
+        Err(Error::TpmError(TpmError::CertificateRequirementNotMet(
+            "Basic Constraint".to_owned(),
+        )))
     }
 }
 
@@ -1035,6 +1035,48 @@ impl TpmAlgId {
             0x0043 => TpmAlgId::CFB,
             0x0044 => TpmAlgId::ECB,
             _ => TpmAlgId::Error,
+        }
+    }
+}
+
+impl From<TpmAlgId> for u16 {
+    fn from(alg_id: TpmAlgId) -> Self {
+        match alg_id {
+            TpmAlgId::Error => 0x0000,
+            TpmAlgId::RSA => 0x0001,
+            TpmAlgId::SHA1 => 0x0004,
+            TpmAlgId::HMAC => 0x0005,
+            TpmAlgId::AES => 0x0006,
+            TpmAlgId::MGF1 => 0x0007,
+            TpmAlgId::KEYEDHASH => 0x0008,
+            TpmAlgId::XOR => 0x000A,
+            TpmAlgId::SHA256 => 0x000B,
+            TpmAlgId::SHA384 => 0x000C,
+            TpmAlgId::SHA512 => 0x000D,
+            TpmAlgId::NULL => 0x0010,
+            TpmAlgId::SM3_256 => 0x0012,
+            TpmAlgId::SM4 => 0x0013,
+            TpmAlgId::RSASSA => 0x0014,
+            TpmAlgId::RSAES => 0x0015,
+            TpmAlgId::RSAPSS => 0x0016,
+            TpmAlgId::OAEP => 0x0017,
+            TpmAlgId::ECDSA => 0x0018,
+            TpmAlgId::ECDH => 0x0019,
+            TpmAlgId::ECDAA => 0x001A,
+            TpmAlgId::SM2 => 0x001B,
+            TpmAlgId::ECSCHNORR => 0x001C,
+            TpmAlgId::ECMQV => 0x001D,
+            TpmAlgId::Kdf1Sp800_56A => 0x0020,
+            TpmAlgId::KDF2 => 0x0021,
+            TpmAlgId::Kdf1Sp800_108 => 0x0022,
+            TpmAlgId::ECC => 0x0023,
+            TpmAlgId::SYMCIPHER => 0x0025,
+            TpmAlgId::CAMELLIA => 0x0026,
+            TpmAlgId::CTR => 0x0040,
+            TpmAlgId::OFB => 0x0041,
+            TpmAlgId::CBC => 0x0042,
+            TpmAlgId::CFB => 0x0043,
+            TpmAlgId::ECB => 0x0044,
         }
     }
 }
