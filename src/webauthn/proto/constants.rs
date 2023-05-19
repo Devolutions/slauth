@@ -28,7 +28,7 @@ pub const ECDSA_CURVE_P256: i64 = 1;
 pub const ECDSA_CURVE_P384: i64 = 2;
 pub const ECDSA_CURVE_P521: i64 = 3;
 
-pub const TPM_GENERATED_VALUE: u32 = 0xff544347;
+pub const TPM_GENERATED_VALUE: u32 = 0xff544347; // https://www.w3.org/TR/webauthn-2/#sctn-tpm-attestation
 
 pub const TCG_AT_TPM_MANUFACTURER: &[u8] = &oid!(raw 2.23.133.2.1);
 pub const TCG_AT_TPM_MODEL: &[u8] = &oid!(raw 2.23.133.2.2);

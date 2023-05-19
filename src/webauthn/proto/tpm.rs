@@ -48,11 +48,7 @@ impl TPM {
             return Err(Error::TpmError(TpmError::AlgorithmNotSupported));
         }
 
-        if let Value::Text(ver) = &self.ver {
-            if ver != "2.0" {
-                return Err(Error::TpmError(TpmError::AttestationVersionNotSupported));
-            }
-        } else {
+        if !matches!(&self.ver, Value::Text(ver) if ver == "2.0") {
             return Err(Error::TpmError(TpmError::AttestationVersionNotSupported));
         }
 
@@ -60,7 +56,7 @@ impl TPM {
             return Err(Error::TpmError(TpmError::CertificateMissing));
         }
 
-        let cert_info = CertInfo::from_buf(self.cert_info.as_slice())?;
+        let cert_info = CertInfo::from_slice(self.cert_info.as_slice())?;
 
         if cert_info.magic != TPM_GENERATED_VALUE {
             return Err(Error::TpmError(TpmError::MagicInvalid));
@@ -85,7 +81,7 @@ impl TPM {
                     _ => return Err(Error::TpmError(TpmError::PubAreaHashUnknown(name_alg.into()))),
                 };
 
-                if hash_name != name.to_vec() {
+                if hash_name != *name {
                     return Err(Error::TpmError(TpmError::AttestedNamePubAreaMismatch));
                 }
             }
@@ -96,7 +92,8 @@ impl TPM {
     }
 
     pub fn verify_extra_data(&self, auth_data: &[u8], client_data_hash: &[u8], extra_data: Option<Vec<u8>>) -> Result<(), Error> {
-        let mut buf = auth_data.to_vec();
+        let mut buf = Vec::with_capacity(auth_data.len() + client_data_hash.len());
+        buf.extend_from_slice(auth_data);
         buf.extend_from_slice(client_data_hash);
 
         let att_to_be_signed = match self.alg.into() {
@@ -142,8 +139,8 @@ impl TPM {
             .map_err(|_| Error::TpmError(TpmError::SignatureValidationFailed))
     }
 
-    pub fn verify_public_key(&mut self, credential_pk: &CredentialPublicKey) -> Result<(), Error> {
-        let pub_area = PublicArea::from_vec(std::mem::take(&mut self.pub_area))?;
+    pub fn verify_public_key(&self, credential_pk: &CredentialPublicKey) -> Result<(), Error> {
+        let pub_area = PublicArea::from_slice(self.pub_area.as_slice())?;
 
         match (credential_pk.alg.into(), pub_area.parameters, pub_area.unique) {
             (CoseAlgorithmIdentifier::RSA, AlgParameters::RSA(_), TpmuPublicId::Rsa(modulus)) => {
@@ -260,27 +257,21 @@ impl TPM {
     }
 
     fn verify_extended_key_usage(&self, x509: &X509Certificate) -> Result<(), Error> {
-        if let Ok(Some(extended_key_usage)) = x509.extended_key_usage() {
-            if extended_key_usage.value.other.contains(TCG_KP_AIK_CERTIFICATE) {
-                return Ok(());
-            }
+        match x509.extended_key_usage() {
+            Ok(Some(extended_key_usage)) if extended_key_usage.value.other.contains(TCG_KP_AIK_CERTIFICATE) => Ok(()),
+            _ => Err(Error::TpmError(TpmError::CertificateRequirementNotMet(
+                "Extended Key Usage".to_owned(),
+            ))),
         }
-
-        Err(Error::TpmError(TpmError::CertificateRequirementNotMet(
-            "Extended Key Usage".to_owned(),
-        )))
     }
 
     fn verify_basic_constraints(&self, x509: &X509Certificate) -> Result<(), Error> {
-        if let Ok(Some(basic_constraints)) = x509.basic_constraints() {
-            if !basic_constraints.value.ca {
-                return Ok(());
-            }
+        match x509.basic_constraints() {
+            Ok(Some(basic_constraints)) if !basic_constraints.value.ca => Ok(()),
+            _ => Err(Error::TpmError(TpmError::CertificateRequirementNotMet(
+                "Basic Constraint".to_owned(),
+            ))),
         }
-
-        Err(Error::TpmError(TpmError::CertificateRequirementNotMet(
-            "Basic Constraint".to_owned(),
-        )))
     }
 }
 
@@ -373,7 +364,7 @@ pub struct PublicArea {
 }
 
 impl PublicArea {
-    pub fn from_vec(buf: Vec<u8>) -> Result<PublicArea, Error> {
+    pub fn from_slice(buf: &[u8]) -> Result<PublicArea, Error> {
         let mut cursor = Cursor::new(buf);
         let alg_type = cursor.read_u16::<BigEndian>()?;
 
@@ -464,11 +455,7 @@ pub struct CertInfo {
 }
 
 impl CertInfo {
-    pub fn from_buf(buf: &[u8]) -> Result<CertInfo, Error> {
-        CertInfo::from_vec(buf.to_vec())
-    }
-
-    pub fn from_vec(buf: Vec<u8>) -> Result<CertInfo, Error> {
+    pub fn from_slice(buf: &[u8]) -> Result<CertInfo, Error> {
         let mut cursor = Cursor::new(buf);
 
         let magic = cursor.read_u32::<BigEndian>()?;

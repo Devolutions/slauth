@@ -297,7 +297,7 @@ impl CredentialCreationVerifier {
                 }
             }
 
-            Some(AttestationStatement::TPM(mut tpm)) => {
+            Some(AttestationStatement::TPM(tpm)) => {
                 let cert_info = tpm.verify_structure()?;
                 tpm.verify_attest(&cert_info, TpmAlgId::from_u16(cert_info.alg))?;
                 let cert = tpm.verify_cert()?;
