@@ -9,11 +9,13 @@ use crate::webauthn::{
     error::{CredentialError, Error},
     proto::{
         constants::{
-            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2,
-            WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG,
-            WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET,
+            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
         },
-        raw_message::{AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CredentialPublicKey, Message},
+        raw_message::{
+            AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CredentialPublicKey, Message,
+        },
+        tpm::TpmAlgId,
         web_message::{
             AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
             PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
@@ -97,7 +99,7 @@ impl CredentialCreationBuilder {
             challenge,
             pub_key_cred_params: vec![PublicKeyCredentialParameters {
                 auth_type: PublicKeyCredentialType::PublicKey,
-                alg: WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2,
+                alg: CoseAlgorithmIdentifier::EC2.into(),
             }],
             timeout: None,
             exclude_credentials: self.exclude_credentials,
@@ -295,6 +297,19 @@ impl CredentialCreationVerifier {
                 }
             }
 
+            Some(AttestationStatement::TPM(tpm)) => {
+                let cert_info = tpm.verify_structure()?;
+                tpm.verify_attest(&cert_info, TpmAlgId::from_u16(cert_info.alg))?;
+                let cert = tpm.verify_cert()?;
+                tpm.verify_public_key(&attested_credential_data.credential_public_key)?;
+                tpm.verify_extra_data(
+                    attestation.raw_auth_data.as_slice(),
+                    client_data_hash.as_slice(),
+                    cert_info.extra_data.data,
+                )?;
+                tpm.verify_signature(cert.as_slice())?;
+            }
+
             Some(AttestationStatement::None) => {}
 
             _ => {
@@ -373,9 +388,9 @@ impl CredentialRequestBuilder {
 }
 
 fn get_alg_from_cose(id: i64) -> &'static SignatureAlgorithm {
-    match id {
-        WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2 => &webpki::ECDSA_P256_SHA256,
-        WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA => &webpki::RSA_PKCS1_2048_8192_SHA256,
+    match CoseAlgorithmIdentifier::from(id) {
+        CoseAlgorithmIdentifier::EC2 => &webpki::ECDSA_P256_SHA256,
+        CoseAlgorithmIdentifier::RSA => &webpki::RSA_PKCS1_2048_8192_SHA256,
         _ => &webpki::ECDSA_P256_SHA256,
     }
 }
@@ -385,7 +400,7 @@ pub struct CredentialRequestVerifier {
     pub credential_pub: CredentialPublicKey,
     pub context: PublicKeyCredentialRequestOptions,
     origin: String,
-    user_handle: String,
+    user_handle: Vec<u8>,
     sign_count: u32,
 }
 
@@ -395,7 +410,7 @@ impl CredentialRequestVerifier {
         credential_pub: CredentialPublicKey,
         context: PublicKeyCredentialRequestOptions,
         origin: &str,
-        user_handle: &str,
+        user_handle: &[u8],
         sign_count: u32,
     ) -> Self {
         CredentialRequestVerifier {
@@ -403,7 +418,7 @@ impl CredentialRequestVerifier {
             credential_pub,
             context,
             origin: origin.to_string(),
-            user_handle: user_handle.to_string(),
+            user_handle: user_handle.to_vec(),
             sign_count,
         }
     }
@@ -416,7 +431,7 @@ impl CredentialRequestVerifier {
             .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
         let signature = base64::decode(
-            &response
+            response
                 .signature
                 .as_ref()
                 .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?,
@@ -446,8 +461,8 @@ impl CredentialRequestVerifier {
             ))));
         }
 
-        if let Some(user_handle) = &response.user_handle {
-            if *user_handle != self.user_handle {
+        if let Some(Ok(user_handle)) = response.user_handle.as_ref().map(base64::decode) {
+            if user_handle != self.user_handle {
                 return Err(Error::CredentialError(CredentialError::Other(String::from(
                     "User handles do not match",
                 ))));
@@ -531,7 +546,7 @@ impl CredentialRequestVerifier {
 }
 
 fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn VerificationAlgorithm, Error> {
-    if id == WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2 {
+    if CoseAlgorithmIdentifier::from(id) == CoseAlgorithmIdentifier::EC2 {
         match curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),

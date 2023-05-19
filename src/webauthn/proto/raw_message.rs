@@ -1,8 +1,11 @@
 use crate::webauthn::{
     error::Error,
-    proto::constants::{
-        ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
-        WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
+    proto::{
+        constants::{
+            ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
+            WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
+        },
+        tpm::TPM,
     },
 };
 use byteorder::{BigEndian, ReadBytesExt};
@@ -35,17 +38,6 @@ pub struct AttestationObject {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Packed {
-    pub alg: i64,
-    #[serde(with = "serde_bytes")]
-    pub sig: Vec<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub x5c: Option<serde_cbor::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ecdaa_key_id: Option<serde_cbor::Value>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TPM {
     pub alg: i64,
     #[serde(with = "serde_bytes")]
     pub sig: Vec<u8>,
@@ -396,6 +388,36 @@ impl FromStr for Coordinates {
             }
 
             _ => Err(Error::Other("Key prefix missing".to_string())),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub enum CoseAlgorithmIdentifier {
+    EC2 = -7,
+    RSA = -257,
+    RS1 = -65535,
+    NotSupported,
+}
+
+impl From<i64> for CoseAlgorithmIdentifier {
+    fn from(value: i64) -> Self {
+        match value {
+            -65535 => CoseAlgorithmIdentifier::RS1,
+            -257 => CoseAlgorithmIdentifier::RSA,
+            -7 => CoseAlgorithmIdentifier::EC2,
+            _ => CoseAlgorithmIdentifier::NotSupported,
+        }
+    }
+}
+
+impl From<CoseAlgorithmIdentifier> for i64 {
+    fn from(value: CoseAlgorithmIdentifier) -> Self {
+        match value {
+            CoseAlgorithmIdentifier::RS1 => -65535,
+            CoseAlgorithmIdentifier::RSA => -257,
+            CoseAlgorithmIdentifier::EC2 => -7,
+            _ => -65536, //Unassigned
         }
     }
 }

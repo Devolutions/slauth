@@ -11,7 +11,6 @@ use slauth::webauthn::{
     server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier},
 };
 use std::{collections::HashMap, sync::RwLock};
-use uuid::Uuid;
 
 struct TestController {
     creds: RwLock<HashMap<String, (CredentialPublicKey, u32)>>,
@@ -54,12 +53,7 @@ impl Responder for TestError {
 impl TestController {
     #[get("/register")]
     async fn register_request(&self) -> Result<Json<Value>, TestError> {
-        let uuid = base64::encode_config(
-            Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
-                .expect("should be ok")
-                .as_bytes(),
-            base64::URL_SAFE_NO_PAD,
-        );
+        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         let builder = CredentialCreationBuilder::new()
             .challenge(gen_challenge(WEBAUTHN_CHALLENGE_LENGTH))
             .user(uuid.clone(), "lfauvel@devolutions.net".to_string(), "Luc Fauvel".to_string(), None)
@@ -83,12 +77,7 @@ impl TestController {
     #[post("/register")]
     async fn complete_register(&self, cred: Json<PublicKeyCredential>) -> () {
         let cred = cred.into_inner();
-        let uuid = base64::encode_config(
-            Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
-                .expect("should be ok")
-                .as_bytes(),
-            base64::URL_SAFE_NO_PAD,
-        );
+        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         if let Some(context) = self.reg_contexts.read().expect("should be ok").get(&uuid) {
             let mut verifier = CredentialCreationVerifier::new(cred.clone(), context.clone(), "http://localhost");
             if let Ok(result) = verifier.verify() {
@@ -102,12 +91,7 @@ impl TestController {
         let mut builder = CredentialRequestBuilder::new()
             .rp("localhost".to_string())
             .challenge(gen_challenge(WEBAUTHN_CHALLENGE_LENGTH));
-        let uuid = base64::encode_config(
-            Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
-                .expect("should be ok")
-                .as_bytes(),
-            base64::URL_SAFE_NO_PAD,
-        );
+        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         for (cred, _) in self.creds.read().unwrap().iter() {
             builder = builder.allow_credential(cred.clone());
         }
@@ -126,12 +110,7 @@ impl TestController {
     #[post("/sign")]
     async fn complete_sign(&self, req: Json<PublicKeyCredential>) -> Result<(u16, String), TestError> {
         let cred = req.into_inner();
-        let uuid = base64::encode_config(
-            Uuid::from_str("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7")
-                .expect("should be ok")
-                .as_bytes(),
-            base64::URL_SAFE_NO_PAD,
-        );
+        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
 
         let ctx_lock = self
             .sign_contexts
@@ -154,7 +133,7 @@ impl TestController {
             cred_pub.clone(),
             context.clone(),
             "http://localhost",
-            uuid.as_str(),
+            uuid.as_bytes(),
             *sign_count,
         );
         let res = verifier.verify()?;

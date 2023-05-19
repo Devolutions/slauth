@@ -1,8 +1,7 @@
+use x509_parser::der_parser::{oid, Oid};
+
 pub const WEBAUTHN_CHALLENGE_LENGTH: usize = 32;
 pub const WEBAUTHN_CREDENTIAL_ID_LENGTH: usize = 16;
-
-pub const WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_EC2: i64 = -7;
-pub const WEBAUTHN_COSE_ALGORITHM_IDENTIFIER_RSA: i64 = -257;
 
 pub const WEBAUTHN_USER_PRESENT_FLAG: u8 = 0b00000001;
 pub const WEBAUTHN_USER_VERIFIED_FLAG: u8 = 0b00000100;
@@ -28,3 +27,11 @@ pub const ECDSA_Y_PREFIX_UNCOMPRESSED: u8 = 4;
 pub const ECDSA_CURVE_P256: i64 = 1;
 pub const ECDSA_CURVE_P384: i64 = 2;
 pub const ECDSA_CURVE_P521: i64 = 3;
+
+pub const TPM_GENERATED_VALUE: u32 = 0xff544347; // https://www.w3.org/TR/webauthn-2/#sctn-tpm-attestation
+
+pub const TCG_AT_TPM_MANUFACTURER: &[u8] = &oid!(raw 2.23.133.2.1);
+pub const TCG_AT_TPM_MODEL: &[u8] = &oid!(raw 2.23.133.2.2);
+pub const TCG_AT_TPM_VERSION: &[u8] = &oid!(raw 2.23.133.2.3);
+
+pub const TCG_KP_AIK_CERTIFICATE: &Oid = &oid!(2.23.133 .8 .3);

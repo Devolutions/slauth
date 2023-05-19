@@ -25,12 +25,14 @@ auth-base = ["base64", "byteorder", "ring", "serde", "serde_derive", "serde_json
 android = ["jni"]
 
 [dependencies]
-sha2 = "0.10"
+sha2 = {version = "0.10" , features = ["oid"]}
 hmac = { version = "0.12", features = ["reset"] }
-sha-1 = "0.10"
+sha-1 = {version = "0.10" , features = ["oid"]}
 time = "0.3"
 base32 = "0.4"
 hex = "0.4"
+rsa = "0.9.2"
+x509-parser = "0.15.0"
 
 base64 = { version = "0.13", optional = true }
 byteorder = { version = "1.4", optional = true }
@@ -58,6 +60,7 @@ wasm-bindgen-test = "0.3.10"
 [target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
 saphir = { version = "3.1.0", git = "https://github.com/richerarc/saphir.git", tag = "v3.1.0", features = ["full"] } # not released on crates.io yet, required for dependancies
 tokio = { version = "1", features = ["full"] }
+async-stream = ">= 0.3, < 0.3.4" # 0.3.4 and up currently break saphir
 
 [dev-dependencies]
 serde_json = "1.0"
