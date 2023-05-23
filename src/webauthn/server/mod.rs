@@ -70,7 +70,7 @@ impl CredentialCreationBuilder {
         self
     }
 
-    pub fn add_pk_algorithms_support(mut self, cose_alg_ids: Vec<CoseAlgorithmIdentifier>) -> Self {
+    pub fn add_public_key_credential_param(mut self, cose_alg_ids: Vec<CoseAlgorithmIdentifier>) -> Self {
         self.supported_algorithms.extend(cose_alg_ids);
         self
     }
