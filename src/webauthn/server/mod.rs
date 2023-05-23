@@ -70,8 +70,8 @@ impl CredentialCreationBuilder {
         self
     }
 
-    pub fn add_pk_alg(mut self, cose_alg_id: CoseAlgorithmIdentifier) -> Self {
-        self.supported_algorithms.push(cose_alg_id);
+    pub fn add_pk_algorithms_support(mut self, cose_alg_ids: Vec<CoseAlgorithmIdentifier>) -> Self {
+        self.supported_algorithms.extend(cose_alg_ids);
         self
     }
 
