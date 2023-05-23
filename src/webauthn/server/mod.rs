@@ -32,6 +32,7 @@ pub struct CredentialCreationBuilder {
     rp: Option<Rp>,
     user_verification_requirement: Option<UserVerificationRequirement>,
     exclude_credentials: Vec<PublicKeyCredentialDescriptor>,
+    supported_algorithms: Vec<CoseAlgorithmIdentifier>,
 }
 
 impl CredentialCreationBuilder {
@@ -69,6 +70,11 @@ impl CredentialCreationBuilder {
         self
     }
 
+    pub fn add_pk_alg(mut self, cose_alg_id: CoseAlgorithmIdentifier) -> Self {
+        self.supported_algorithms.push(cose_alg_id);
+        self
+    }
+
     pub fn build(self) -> Result<PublicKeyCredentialCreationOptions, Error> {
         let challenge = self
             .challenge
@@ -93,14 +99,20 @@ impl CredentialCreationBuilder {
             })
             .ok_or_else(|| Error::Other("Unable to build a WebAuthn request without a relying party".to_string()))?;
 
+        let pub_key_cred_params = self
+            .supported_algorithms
+            .into_iter()
+            .map(|alg| PublicKeyCredentialParameters {
+                alg: alg.into(),
+                auth_type: PublicKeyCredentialType::PublicKey,
+            })
+            .collect::<Vec<PublicKeyCredentialParameters>>();
+
         Ok(PublicKeyCredentialCreationOptions {
             rp,
             user,
             challenge,
-            pub_key_cred_params: vec![PublicKeyCredentialParameters {
-                auth_type: PublicKeyCredentialType::PublicKey,
-                alg: CoseAlgorithmIdentifier::EC2.into(),
-            }],
+            pub_key_cred_params,
             timeout: None,
             exclude_credentials: self.exclude_credentials,
             authenticator_selection: Some(AuthenticatorSelectionCriteria {
