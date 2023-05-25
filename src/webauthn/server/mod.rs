@@ -2,6 +2,7 @@ use ring::{
     signature,
     signature::{UnparsedPublicKey, VerificationAlgorithm},
 };
+use rsa::pkcs1::{der::Encode, RsaPublicKey, UintRef};
 use sha2::{Digest, Sha256};
 use webpki::{EndEntityCert, SignatureAlgorithm};
 
@@ -10,10 +11,11 @@ use crate::webauthn::{
     proto::{
         constants::{
             ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET,
-            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
         },
         raw_message::{
-            AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CredentialPublicKey, Message,
+            AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo,
+            CredentialPublicKey, Message,
         },
         tpm::TpmAlgId,
         web_message::{
@@ -234,7 +236,10 @@ impl CredentialCreationVerifier {
             .attested_credential_data
             .ok_or(Error::CredentialError(CredentialError::AttestationMissing))?;
 
-        if attested_credential_data.credential_public_key.key_type != WEBAUTH_PUBLIC_KEY_TYPE_EC2 {
+        if !matches!(
+            attested_credential_data.credential_public_key.key_type,
+            WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA
+        ) {
             return Err(Error::CredentialError(CredentialError::KeyType));
         }
 
@@ -265,7 +270,12 @@ impl CredentialCreationVerifier {
                 if let Some(serde_cbor::Value::Array(mut cert_arr)) = fido_u2f.x5c {
                     match cert_arr.pop() {
                         Some(serde_cbor::Value::Bytes(cert)) => {
-                            let mut public_key_u2f = attested_credential_data.credential_public_key.coords.to_vec();
+                            let mut public_key_u2f = match &attested_credential_data.credential_public_key.key_info {
+                                CoseKeyInfo::EC2(ec2) => ec2.coords.to_vec(),
+                                _ => {
+                                    return Err(Error::Other("Invalid key type".to_owned()));
+                                }
+                            };
                             let mut msg = vec![0x00];
                             msg.append(&mut attestation.auth_data.rp_id_hash.to_vec());
                             msg.append(&mut client_data_hash);
@@ -525,20 +535,38 @@ impl CredentialRequestVerifier {
         msg.append(&mut client_data_hash);
 
         let mut key = Vec::new();
-        match self.credential_pub.coords {
-            Coordinates::Compressed { x, y } => {
-                key.push(y);
-                key.append(&mut x.to_vec());
-            }
 
-            Coordinates::Uncompressed { x, y } => {
-                key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
-                key.append(&mut x.to_vec());
-                key.append(&mut y.to_vec());
+        match &self.credential_pub.key_info {
+            CoseKeyInfo::EC2(ec2) => match ec2.coords {
+                Coordinates::Compressed { x, y } => {
+                    key.push(y);
+                    key.append(&mut x.to_vec());
+                }
+
+                Coordinates::Uncompressed { x, y } => {
+                    key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
+                    key.append(&mut x.to_vec());
+                    key.append(&mut y.to_vec());
+                }
+
+                _ => return Err(Error::Other("Expected coordinates found nothing".to_owned())),
+            },
+            CoseKeyInfo::RSA(rsa) => {
+                let modulus = UintRef::new(rsa.n.as_slice()).map_err(|_| Error::Other("Invalid modulus".to_owned()))?;
+                let public_exponent = UintRef::new(rsa.e.as_slice()).map_err(|_| Error::Other("Invalid public exponent".to_owned()))?;
+
+                let public_key = RsaPublicKey { modulus, public_exponent };
+
+                key.append(
+                    public_key
+                        .to_der()
+                        .map_err(|_| Error::Other("Public key with invalid modulus and/or public_exponent".to_owned()))?
+                        .as_mut(),
+                );
             }
         }
 
-        let signature_alg = get_ring_alg_from_cose(self.credential_pub.alg, self.credential_pub.curve)?;
+        let signature_alg = get_ring_alg_from_cose(self.credential_pub.alg, &self.credential_pub.key_info)?;
         let public_key = UnparsedPublicKey::new(signature_alg, key.as_slice());
         public_key
             .verify(msg.as_slice(), signature.as_slice())
@@ -557,18 +585,18 @@ impl CredentialRequestVerifier {
     }
 }
 
-fn get_ring_alg_from_cose(id: i64, curve: i64) -> Result<&'static dyn VerificationAlgorithm, Error> {
-    if CoseAlgorithmIdentifier::from(id) == CoseAlgorithmIdentifier::EC2 {
-        match curve {
+fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dyn VerificationAlgorithm, Error> {
+    match (CoseAlgorithmIdentifier::from(id), key_info) {
+        (CoseAlgorithmIdentifier::EC2, CoseKeyInfo::EC2(ec2)) => match ec2.curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
             _ => Err(Error::CredentialError(CredentialError::Other(String::from(
                 "Unsupported algorithm",
             )))),
-        }
-    } else {
-        Err(Error::CredentialError(CredentialError::Other(String::from(
+        },
+        (CoseAlgorithmIdentifier::RSA, CoseKeyInfo::RSA(_)) => Ok(&signature::RSA_PKCS1_2048_8192_SHA256),
+        _ => Err(Error::CredentialError(CredentialError::Other(String::from(
             "Unsupported algorithm",
-        ))))
+        )))),
     }
 }

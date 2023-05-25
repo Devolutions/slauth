@@ -5,7 +5,7 @@ use crate::webauthn::{
             ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_CURVE_P521, TCG_AT_TPM_MANUFACTURER, TCG_AT_TPM_MODEL, TCG_AT_TPM_VERSION,
             TCG_KP_AIK_CERTIFICATE, TPM_GENERATED_VALUE,
         },
-        raw_message::{Coordinates, CoseAlgorithmIdentifier, CredentialPublicKey},
+        raw_message::{Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo, CredentialPublicKey},
     },
 };
 use byteorder::{BigEndian, ReadBytesExt};
@@ -144,28 +144,35 @@ impl TPM {
 
         match (credential_pk.alg.into(), pub_area.parameters, pub_area.unique) {
             (CoseAlgorithmIdentifier::RSA, AlgParameters::RSA(_), TpmuPublicId::Rsa(modulus)) => {
-                if credential_pk.coords.to_vec() != modulus {
+                if !matches!(&self.ver, Value::Text(ver) if ver == "2.0") {
+                    return Err(Error::TpmError(TpmError::AttestationVersionNotSupported));
+                }
+
+                if !matches!(&credential_pk.key_info, CoseKeyInfo::RSA(rsa) if rsa.n == modulus) {
                     return Err(Error::TpmError(TpmError::PublicKeyParametersMismatch(credential_pk.alg)));
                 }
             }
             (CoseAlgorithmIdentifier::EC2, AlgParameters::ECC(params), TpmuPublicId::Ecc(ecc_points)) => {
-                match (credential_pk.curve, params.curve_id) {
-                    (ECDSA_CURVE_P256, TpmEccCurve::NISTP256)
-                    | (ECDSA_CURVE_P384, TpmEccCurve::NISTP384)
-                    | (ECDSA_CURVE_P521, TpmEccCurve::NISTP521) => {}
-                    _ => {
+                if let CoseKeyInfo::EC2(ec2) = &credential_pk.key_info {
+                    if !matches!(
+                        (ec2.curve, params.curve_id),
+                        (ECDSA_CURVE_P256, TpmEccCurve::NISTP256)
+                            | (ECDSA_CURVE_P384, TpmEccCurve::NISTP384)
+                            | (ECDSA_CURVE_P521, TpmEccCurve::NISTP521)
+                    ) {
                         return Err(Error::TpmError(TpmError::PublicKeyParametersMismatch(credential_pk.alg)));
                     }
-                }
 
-                match credential_pk.coords {
-                    Coordinates::Compressed { .. } => {
-                        return Err(Error::TpmError(TpmError::PublicKeyCoordinatesMismatch));
-                    }
-                    Coordinates::Uncompressed { x, y } => {
-                        if x.as_slice() != ecc_points.x.as_slice() || y.as_slice() != ecc_points.y.as_slice() {
+                    match ec2.coords {
+                        Coordinates::Compressed { .. } => {
                             return Err(Error::TpmError(TpmError::PublicKeyCoordinatesMismatch));
                         }
+                        Coordinates::Uncompressed { x, y } => {
+                            if x.as_slice() != ecc_points.x.as_slice() || y.as_slice() != ecc_points.y.as_slice() {
+                                return Err(Error::TpmError(TpmError::PublicKeyCoordinatesMismatch));
+                            }
+                        }
+                        _ => return Err(Error::Other("Expected coordinates found nothing".to_owned())),
                     }
                 }
             }

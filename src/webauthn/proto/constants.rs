@@ -16,6 +16,7 @@ pub const WEBAUTHN_FORMAT_ANDROID_KEY: &str = "android-key";
 pub const WEBAUTHN_FORMAT_TPM: &str = "tpm";
 
 pub const WEBAUTH_PUBLIC_KEY_TYPE_EC2: i64 = 2;
+pub const WEBAUTH_PUBLIC_KEY_TYPE_RSA: i64 = 3;
 
 pub const WEBAUTHN_REQUEST_TYPE_CREATE: &str = "webauthn.create";
 pub const WEBAUTHN_REQUEST_TYPE_GET: &str = "webauthn.get";
