@@ -236,7 +236,10 @@ impl CredentialCreationVerifier {
             .attested_credential_data
             .ok_or(Error::CredentialError(CredentialError::AttestationMissing))?;
 
-        if !matches!(attested_credential_data.credential_public_key.key_type, WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA) {
+        if !matches!(
+            attested_credential_data.credential_public_key.key_type,
+            WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA
+        ) {
             return Err(Error::CredentialError(CredentialError::KeyType));
         }
 

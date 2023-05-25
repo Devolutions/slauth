@@ -198,7 +198,7 @@ impl CredentialPublicKey {
             })
             .ok_or_else(|| Error::Other("algorithm missing".to_string()))?;
 
-        return match (key_type, CoseAlgorithmIdentifier::from(alg)) {
+        match (key_type, CoseAlgorithmIdentifier::from(alg)) {
             (WEBAUTH_PUBLIC_KEY_TYPE_EC2, CoseAlgorithmIdentifier::EC2) => {
                 let curve = map
                     .get(&Value::Integer(-1))
@@ -279,7 +279,7 @@ impl CredentialPublicKey {
                 })
             }
             _ => Err(Error::Other("Cose key type not supported".to_owned())),
-        };
+        }
     }
 }
 
