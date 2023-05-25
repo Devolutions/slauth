@@ -4,6 +4,7 @@ use crate::webauthn::{
         constants::{
             ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
             WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
+            WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
         },
         tpm::TPM,
     },
@@ -153,8 +154,25 @@ pub struct AttestedCredentialData {
 pub struct CredentialPublicKey {
     pub key_type: i64,
     pub alg: i64,
+    pub key_info: CoseKeyInfo,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Rsa {
+    pub n: Vec<u8>,
+    pub e: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EC2 {
     pub curve: i64,
     pub coords: Coordinates,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum CoseKeyInfo {
+    EC2(EC2),
+    RSA(Rsa),
 }
 
 impl CredentialPublicKey {
@@ -180,49 +198,88 @@ impl CredentialPublicKey {
             })
             .ok_or_else(|| Error::Other("algorithm missing".to_string()))?;
 
-        let curve = map
-            .get(&Value::Integer(-1))
-            .map(|val| match val {
-                Value::Integer(i) => *i as i64,
-                _ => 0i64,
-            })
-            .ok_or_else(|| Error::Other("curve missing".to_string()))?;
+        return match (key_type, CoseAlgorithmIdentifier::from(alg)) {
+            (WEBAUTH_PUBLIC_KEY_TYPE_EC2, CoseAlgorithmIdentifier::EC2) => {
+                let curve = map
+                    .get(&Value::Integer(-1))
+                    .map(|val| match val {
+                        Value::Integer(i) => *i as i64,
+                        _ => 0i64,
+                    })
+                    .ok_or_else(|| Error::Other("curve missing".to_string()))?;
 
-        let x = map
-            .get(&Value::Integer(-2))
-            .and_then(|val| match val {
-                Value::Bytes(i) => {
-                    let mut array = [0u8; 32];
-                    array.copy_from_slice(&i[0..32]);
-                    Some(array)
+                let x = map
+                    .get(&Value::Integer(-2))
+                    .and_then(|val| match val {
+                        Value::Bytes(i) => {
+                            let mut array = [0u8; 32];
+                            array.copy_from_slice(&i[0..32]);
+                            Some(array)
+                        }
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::Other("x coordinate missing".to_string()))?;
+
+                let coords = map
+                    .get(&Value::Integer(-3))
+                    .and_then(|val| match val {
+                        Value::Bytes(i) => {
+                            let mut array = [0u8; 32];
+                            array.copy_from_slice(&i[0..32]);
+                            Some(Coordinates::Uncompressed { x, y: array })
+                        }
+
+                        Value::Bool(b) => Some(Coordinates::Compressed {
+                            x,
+                            y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVE },
+                        }),
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::Other("y coordinate missing".to_string()))?;
+
+                Ok(CredentialPublicKey {
+                    key_type,
+                    alg,
+                    key_info: CoseKeyInfo::EC2(EC2 { curve, coords }),
+                })
+            }
+            (WEBAUTH_PUBLIC_KEY_TYPE_RSA, CoseAlgorithmIdentifier::RSA) => {
+                let n = map
+                    .get(&Value::Integer(-1))
+                    .and_then(|val| match val {
+                        Value::Bytes(i) => {
+                            let mut n = Vec::with_capacity(256);
+                            n.extend_from_slice(i);
+                            Some(n)
+                        }
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::Other("Invalid modulus for RSA key type".to_owned()))?;
+
+                let e = map
+                    .get(&Value::Integer(-2))
+                    .and_then(|val| match val {
+                        Value::Bytes(i) => {
+                            let mut e = Vec::with_capacity(3);
+                            e.extend_from_slice(i);
+                            Some(e)
+                        }
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::Other("Invalid exponent for RSA key type".to_owned()))?;
+
+                if n.len() != 256 || e.len() != 3 {
+                    return Err(Error::Other("Invalid RSA".to_owned()));
                 }
-                _ => None,
-            })
-            .ok_or_else(|| Error::Other("x coordinate missing".to_string()))?;
 
-        let coords = map
-            .get(&Value::Integer(-3))
-            .and_then(|val| match val {
-                Value::Bytes(i) => {
-                    let mut array = [0u8; 32];
-                    array.copy_from_slice(&i[0..32]);
-                    Some(Coordinates::Uncompressed { x, y: array })
-                }
-
-                Value::Bool(b) => Some(Coordinates::Compressed {
-                    x,
-                    y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVE },
-                }),
-                _ => None,
-            })
-            .ok_or_else(|| Error::Other("y coordinate missing".to_string()))?;
-
-        Ok(CredentialPublicKey {
-            key_type,
-            alg,
-            curve,
-            coords,
-        })
+                Ok(CredentialPublicKey {
+                    key_type,
+                    alg,
+                    key_info: CoseKeyInfo::RSA(Rsa { n, e }),
+                })
+            }
+            _ => Err(Error::Other("Cose key type not supported".to_owned())),
+        };
     }
 }
 
@@ -296,6 +353,7 @@ impl Message for AttestationObject {
 pub enum Coordinates {
     Compressed { x: [u8; 32], y: u8 },
     Uncompressed { x: [u8; 32], y: [u8; 32] },
+    None,
 }
 
 impl Coordinates {
@@ -312,6 +370,8 @@ impl Coordinates {
                 key.append(&mut x.to_vec());
                 key.append(&mut y.to_vec());
             }
+
+            _ => {}
         }
 
         key
@@ -332,6 +392,8 @@ impl ToString for Coordinates {
                 key.append(&mut x.to_vec());
                 key.append(&mut y.to_vec());
             }
+
+            _ => {}
         }
 
         base64::encode_config(&key, base64::URL_SAFE_NO_PAD)
