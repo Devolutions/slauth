@@ -160,6 +160,7 @@ pub struct CollectedClientData {
     pub request_type: String,
     pub challenge: String,
     pub origin: String,
+    #[serde(default)]
     pub cross_origin: bool,
     pub token_binding: Option<TokenBinding>,
 }
