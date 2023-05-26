@@ -93,7 +93,7 @@ pub(crate) fn dt(hmac_res: &[u8]) -> u32 {
     let offset_val = (hmac_res[hmac_res.len() - 1] & 0x0F) as usize;
     let h = &hmac_res[offset_val..offset_val + 4];
 
-    ((h[0] as u32 & 0x7f) << 24) | ((h[1] as u32 & 0xff) << 16) | ((h[2] as u32 & 0xff) << 8) | (h[3] as u32 & 0xff)
+    ((h[0] as u32 & 0x7f) << 24) | ((h[1] as u32 & 0xff) << 16) | ((h[2] as u32 & 0xff) << 8) | (h[3] as u32 & 0xff) as u32
 }
 
 #[inline]

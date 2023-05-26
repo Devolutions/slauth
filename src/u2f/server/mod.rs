@@ -49,7 +49,7 @@ impl U2fRequestBuilder {
     }
 
     pub fn challenge(mut self, challenge: String) -> Self {
-        self.challenge = Some(base64::encode(challenge));
+        self.challenge = Some(base64::encode(&challenge));
         self
     }
 
