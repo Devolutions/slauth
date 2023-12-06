@@ -5,6 +5,7 @@ use ring::{
 use rsa::pkcs1::{der::Encode, RsaPublicKey, UintRef};
 use sha2::{Digest, Sha256};
 use webpki::{EndEntityCert, SignatureAlgorithm};
+use http::Uri;
 
 use crate::webauthn::{
     error::{CredentialError, Error},
@@ -35,6 +36,7 @@ pub struct CredentialCreationBuilder {
     user_verification_requirement: Option<UserVerificationRequirement>,
     exclude_credentials: Vec<PublicKeyCredentialDescriptor>,
     supported_algorithms: Vec<CoseAlgorithmIdentifier>,
+    attestation_conveyance_preference: Option<AttestationConveyancePreference>,
 }
 
 impl CredentialCreationBuilder {
@@ -74,6 +76,11 @@ impl CredentialCreationBuilder {
 
     pub fn add_public_key_credential_param(mut self, cose_alg_ids: Vec<CoseAlgorithmIdentifier>) -> Self {
         self.supported_algorithms.extend(cose_alg_ids);
+        self
+    }
+
+    pub fn attestation_conveyance_preference<T: Into<Option<AttestationConveyancePreference>>>(mut self, acp: T) -> Self {
+        self.attestation_conveyance_preference = acp.into();
         self
     }
 
@@ -122,7 +129,7 @@ impl CredentialCreationBuilder {
                 require_resident_key: None,
                 user_verification: self.user_verification_requirement,
             }),
-            attestation: Some(AttestationConveyancePreference::Direct),
+            attestation: self.attestation_conveyance_preference,
             extensions: None,
         })
     }
@@ -145,6 +152,7 @@ pub struct CredentialCreationResult {
     pub public_key: CredentialPublicKey,
     pub sign_count: u32,
     pub has_user_verification: bool,
+    pub aaguid: Option<String>,
 }
 
 pub struct CredentialCreationVerifier {
@@ -204,7 +212,11 @@ impl CredentialCreationVerifier {
         hasher.update(client_data_json);
         let mut client_data_hash = hasher.finalize_reset().to_vec();
 
-        hasher.update(self.context.rp.id.as_ref().unwrap_or(&self.origin));
+        if let Some(rp_id) = self.context.rp.id.as_ref() {
+            hasher.update(rp_id);
+        } else {
+            hasher.update(get_default_rp_id(&self.origin));
+        }
         if attestation.auth_data.rp_id_hash != hasher.finalize().as_slice() {
             return Err(Error::CredentialError(CredentialError::Rp));
         }
@@ -339,10 +351,13 @@ impl CredentialCreationVerifier {
             }
         }
 
+        let aaguid = guid_bytes_to_string(&attested_credential_data.aaguid);
+
         Ok(CredentialCreationResult {
             public_key: attested_credential_data.credential_public_key,
             sign_count: attestation.auth_data.sign_count,
             has_user_verification,
+            aaguid,
         })
     }
 }
@@ -350,6 +365,7 @@ impl CredentialCreationVerifier {
 pub struct CredentialRequestResult {
     pub sign_count: u32,
     pub has_user_verification: bool,
+    pub aaguid: Option<String>,
 }
 
 #[derive(Default)]
@@ -506,7 +522,11 @@ impl CredentialRequestVerifier {
         }
 
         let mut hasher = Sha256::new();
-        hasher.update(self.context.rp_id.as_ref().unwrap_or(&self.origin));
+        if let Some(rp_id) = self.context.rp_id.as_ref() {
+            hasher.update(rp_id);
+        } else {
+            hasher.update(get_default_rp_id(&self.origin));
+        }
         if auth_data.rp_id_hash != hasher.finalize_reset().as_slice() {
             return Err(Error::CredentialError(CredentialError::Rp));
         }
@@ -578,8 +598,11 @@ impl CredentialRequestVerifier {
             ))));
         }
 
+        let aaguid = auth_data.attested_credential_data.and_then(|acd| guid_bytes_to_string(&acd.aaguid));
+
         Ok(CredentialRequestResult {
             sign_count: auth_data.sign_count,
+            aaguid,
             has_user_verification,
         })
     }
@@ -599,4 +622,25 @@ fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dy
             "Unsupported algorithm",
         )))),
     }
+}
+fn guid_bytes_to_string(guid: &[u8; 16]) -> Option<String> {
+    let uuid = uuid::Uuid::from_slice(guid).ok()?;
+    Some(uuid.hyphenated().to_string())
+}
+
+fn get_default_rp_id(origin: &str) -> String {
+    origin.parse::<Uri>()
+        .ok()
+        .and_then(|u| u.authority().map(|a| a.host().to_string()))
+        .unwrap_or(origin.to_string())
+}
+
+#[test]
+fn test_default_rp_id() {
+    assert_eq!(get_default_rp_id("https://login.example.com:1337"), "login.example.com");
+    assert_eq!(get_default_rp_id("https://login.example.com"), "login.example.com");
+    assert_eq!(get_default_rp_id("http://login.example.com:1337"), "login.example.com");
+    assert_eq!(get_default_rp_id("http://login.example.com"), "login.example.com");
+    assert_eq!(get_default_rp_id("login.example.com:1337"), "login.example.com");
+    assert_eq!(get_default_rp_id("login.example.com"), "login.example.com");
 }

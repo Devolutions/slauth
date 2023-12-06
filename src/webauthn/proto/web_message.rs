@@ -128,6 +128,7 @@ pub enum AttestationConveyancePreference {
     None,
     Indirect,
     Direct,
+    Enterprise,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

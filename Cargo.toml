@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.7.3"
+version = "0.7.4"
 authors = ["richer <richer.arc@gmail.com>", "LucFauvel <luc.fauvel@hotmail.com>"]
 edition = "2021"
 description = "oath HOTP and TOTP complient implementation"
@@ -20,7 +20,7 @@ default = ["u2f-server", "webauthn-server", "native-bindings"]
 native-bindings = []
 u2f-server = ["u2f", "webpki"]
 u2f = ["auth-base", "untrusted",  "serde_repr", ]
-webauthn-server = [ "auth-base", "bytes", "serde_cbor"]
+webauthn-server = [ "auth-base", "bytes", "serde_cbor", "http", "uuid" ]
 auth-base = ["base64", "byteorder", "ring", "serde", "serde_derive", "serde_json", "serde_bytes"]
 android = ["jni"]
 
@@ -46,6 +46,8 @@ serde_json = { version = "1.0", optional = true }
 serde_cbor = { version = "0.11", optional = true }
 webpki = { version = "0.22", optional = true, features = ["alloc"] }
 bytes = { version = "1.2", optional = true }
+http = { version = "1.0", optional = true }
+uuid = { version = "1.6", optional = true }
 
 [target.'cfg(target_os="android")'.dependencies]
 jni = { version = "0.20", default-features = false, optional = true }
@@ -53,6 +55,12 @@ jni = { version = "0.20", default-features = false, optional = true }
 [target.'cfg(target_arch="wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2.60" }
 js-sys = "0.3.37"
+# FIXME: https://docs.rs/getrandom/0.2.2/getrandom/#webassembly-support
+# let `getrandom` know that JavaScript is available for our targets
+# `getrandom` is not used directly, but by adding the right feature here
+# it will be compiled with it in our dependencies as well (since union of
+# all the features selected is used when building a Cargo project)
+getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(target_arch="wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.10"
