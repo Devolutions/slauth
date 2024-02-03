@@ -161,8 +161,9 @@ pub struct CollectedClientData {
     pub request_type: String,
     pub challenge: String,
     pub origin: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cross_origin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub token_binding: Option<TokenBinding>,
 }
 

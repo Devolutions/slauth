@@ -1,3 +1,4 @@
+use http::Uri;
 use ring::{
     signature,
     signature::{UnparsedPublicKey, VerificationAlgorithm},
@@ -5,14 +6,14 @@ use ring::{
 use rsa::pkcs1::{der::Encode, RsaPublicKey, UintRef};
 use sha2::{Digest, Sha256};
 use webpki::{EndEntityCert, SignatureAlgorithm};
-use http::Uri;
 
 use crate::webauthn::{
     error::{CredentialError, Error},
     proto::{
         constants::{
             ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET,
-            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_OKP,
+            WEBAUTH_PUBLIC_KEY_TYPE_RSA,
         },
         raw_message::{
             AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo,
@@ -148,6 +149,7 @@ struct Rp {
     pub id: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct CredentialCreationResult {
     pub public_key: CredentialPublicKey,
     pub sign_count: u32,
@@ -250,7 +252,7 @@ impl CredentialCreationVerifier {
 
         if !matches!(
             attested_credential_data.credential_public_key.key_type,
-            WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA
+            WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA | WEBAUTH_PUBLIC_KEY_TYPE_OKP
         ) {
             return Err(Error::CredentialError(CredentialError::KeyType));
         }
@@ -557,6 +559,21 @@ impl CredentialRequestVerifier {
         let mut key = Vec::new();
 
         match &self.credential_pub.key_info {
+            CoseKeyInfo::OKP(ed25519) => match ed25519.coords {
+                Coordinates::Compressed { x, y } => {
+                    key.push(y);
+                    key.append(&mut x.to_vec());
+                }
+
+                Coordinates::Uncompressed { x, y } => {
+                    key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
+                    key.append(&mut x.to_vec());
+                    key.append(&mut y.to_vec());
+                }
+
+                _ => return Err(Error::Other("Expected coordinates found nothing".to_owned())),
+            },
+
             CoseKeyInfo::EC2(ec2) => match ec2.coords {
                 Coordinates::Compressed { x, y } => {
                     key.push(y);
@@ -629,7 +646,8 @@ fn guid_bytes_to_string(guid: &[u8; 16]) -> Option<String> {
 }
 
 fn get_default_rp_id(origin: &str) -> String {
-    origin.parse::<Uri>()
+    origin
+        .parse::<Uri>()
         .ok()
         .and_then(|u| u.authority().map(|a| a.host().to_string()))
         .unwrap_or(origin.to_string())
