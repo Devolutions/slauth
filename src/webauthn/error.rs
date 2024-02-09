@@ -1,4 +1,5 @@
 use base64::DecodeError;
+#[cfg(feature = "webauthn-server")]
 use ring::error::Unspecified;
 use serde_cbor::Error as CborError;
 use serde_json::Error as JsonError;
@@ -7,6 +8,7 @@ use std::{
     fmt::{Display, Formatter},
     io::Error as IoError,
 };
+#[cfg(feature = "webauthn-server")]
 use webpki::Error as WebPkiError;
 
 #[derive(Debug)]
@@ -57,7 +59,9 @@ pub enum Error {
     Base64Error(DecodeError),
     CborError(CborError),
     JsonError(JsonError),
+    #[cfg(feature = "webauthn-server")]
     WebPkiError(WebPkiError),
+    #[cfg(feature = "webauthn-server")]
     RingError(Unspecified),
     Version,
     CredentialError(CredentialError),
@@ -83,12 +87,14 @@ impl From<JsonError> for Error {
     }
 }
 
+#[cfg(feature = "webauthn-server")]
 impl From<WebPkiError> for Error {
     fn from(e: WebPkiError) -> Self {
         Error::WebPkiError(e)
     }
 }
 
+#[cfg(feature = "webauthn-server")]
 impl From<Unspecified> for Error {
     fn from(e: Unspecified) -> Self {
         Error::RingError(e)
@@ -129,7 +135,9 @@ impl Display for Error {
             Base64Error(e) => e.fmt(f),
             CborError(cb_e) => cb_e.fmt(f),
             JsonError(js_e) => js_e.fmt(f),
+            #[cfg(feature = "webauthn-server")]
             WebPkiError(wp_e) => wp_e.fmt(f),
+            #[cfg(feature = "webauthn-server")]
             RingError(r_e) => r_e.fmt(f),
             TpmError(tpm_e) => tpm_e.fmt(f),
         }

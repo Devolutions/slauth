@@ -115,7 +115,7 @@ impl AuthenticatorData {
 
         let flags = cursor.read_u8()?;
 
-        let sign_count = dbg!(cursor.read_u32::<BigEndian>())?;
+        let sign_count = cursor.read_u32::<BigEndian>()?;
 
         let attested_credential_data = if cursor.remaining() > 16 {
             let mut aaguid = [0u8; 16];
@@ -330,7 +330,7 @@ impl CredentialPublicKey {
                 Ok(CredentialPublicKey {
                     key_type,
                     alg,
-                    key_info: CoseKeyInfo::EC2(EC2 { curve, coords }),
+                    key_info: CoseKeyInfo::OKP(OKP { curve, coords }),
                 })
             }
             (WEBAUTH_PUBLIC_KEY_TYPE_RSA, CoseAlgorithmIdentifier::RSA) => {
@@ -418,6 +418,8 @@ impl CredentialPublicKey {
             }
 
             CoseKeyInfo::RSA(value) => {
+                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_RSA as i128));
+                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::RSA as i128));
                 map.insert(Value::Integer(-1), Value::Bytes(value.n));
                 map.insert(Value::Integer(-2), Value::Bytes(value.e));
             }
@@ -628,7 +630,7 @@ impl FromStr for Coordinates {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum CoseAlgorithmIdentifier {
     Ed25519 = -8,
     EC2 = -7,

@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.7.4"
+version = "0.7.5-beta.0"
 authors = ["richer <richer.arc@gmail.com>", "LucFauvel <luc.fauvel@hotmail.com>"]
 edition = "2021"
 description = "oath HOTP and TOTP complient implementation"
@@ -20,7 +20,8 @@ default = ["u2f-server", "webauthn-server", "native-bindings"]
 native-bindings = []
 u2f-server = ["u2f", "webpki"]
 u2f = ["auth-base", "untrusted",  "serde_repr", ]
-webauthn-server = [ "auth-base", "bytes", "serde_cbor", "http", "uuid" ]
+webauthn-server = [ "webauthn", "webpki" ]
+webauthn = [ "auth-base", "bytes", "serde_cbor", "uuid", "http" ]
 auth-base = ["base64", "byteorder", "ring", "serde", "serde_derive", "serde_json", "serde_bytes"]
 android = ["jni"]
 
@@ -56,7 +57,7 @@ uuid = { version = "1.6", optional = true }
 jni = { version = "0.20", default-features = false, optional = true }
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
-wasm-bindgen = { version = "0.2.60" }
+wasm-bindgen = { version = "0.2.91" }
 js-sys = "0.3.37"
 # FIXME: https://docs.rs/getrandom/0.2.2/getrandom/#webassembly-support
 # let `getrandom` know that JavaScript is available for our targets
@@ -64,6 +65,7 @@ js-sys = "0.3.37"
 # it will be compiled with it in our dependencies as well (since union of
 # all the features selected is used when building a Cargo project)
 getrandom = { version = "0.2", features = ["js"] }
+serde-wasm-bindgen = "0.6.3"
 
 [target.'cfg(target_arch="wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.10"

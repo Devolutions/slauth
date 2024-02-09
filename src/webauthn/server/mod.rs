@@ -1,4 +1,3 @@
-use http::Uri;
 use ring::{
     signature,
     signature::{UnparsedPublicKey, VerificationAlgorithm},
@@ -21,7 +20,7 @@ use crate::webauthn::{
         },
         tpm::TpmAlgId,
         web_message::{
-            AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
+            get_default_rp_id, AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
             PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
             PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
             UserVerificationRequirement,
@@ -643,22 +642,4 @@ fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dy
 fn guid_bytes_to_string(guid: &[u8; 16]) -> Option<String> {
     let uuid = uuid::Uuid::from_slice(guid).ok()?;
     Some(uuid.hyphenated().to_string())
-}
-
-fn get_default_rp_id(origin: &str) -> String {
-    origin
-        .parse::<Uri>()
-        .ok()
-        .and_then(|u| u.authority().map(|a| a.host().to_string()))
-        .unwrap_or(origin.to_string())
-}
-
-#[test]
-fn test_default_rp_id() {
-    assert_eq!(get_default_rp_id("https://login.example.com:1337"), "login.example.com");
-    assert_eq!(get_default_rp_id("https://login.example.com"), "login.example.com");
-    assert_eq!(get_default_rp_id("http://login.example.com:1337"), "login.example.com");
-    assert_eq!(get_default_rp_id("http://login.example.com"), "login.example.com");
-    assert_eq!(get_default_rp_id("login.example.com:1337"), "login.example.com");
-    assert_eq!(get_default_rp_id("login.example.com"), "login.example.com");
 }

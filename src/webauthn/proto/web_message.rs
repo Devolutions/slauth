@@ -1,3 +1,4 @@
+use http::Uri;
 use serde_derive::*;
 use serde_json::Value;
 
@@ -141,6 +142,30 @@ pub struct PublicKeyCredential {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct PublicKeyCredentialRaw {
+    pub id: String,
+    pub raw_id: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<AuthenticatorAttestationResponseRaw>,
+}
+
+impl From<PublicKeyCredentialRaw> for PublicKeyCredential {
+    fn from(raw: PublicKeyCredentialRaw) -> Self {
+        PublicKeyCredential {
+            id: raw.id,
+            response: raw.response.map(|response| AuthenticatorAttestationResponse {
+                attestation_object: response.attestation_object.map(|a| base64::encode(&a)),
+                client_data_json: base64::encode(&response.client_data_json),
+                authenticator_data: response.authenticator_data.map(|a| base64::encode(&a)),
+                signature: response.signature.map(|s| base64::encode(&s)),
+                user_handle: response.user_handle.map(|u| base64::encode(&u)),
+            }),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthenticatorAttestationResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation_object: Option<String>,
@@ -152,6 +177,21 @@ pub struct AuthenticatorAttestationResponse {
     pub signature: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_handle: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthenticatorAttestationResponseRaw {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation_object: Option<Vec<u8>>,
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticator_data: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_handle: Option<Vec<u8>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -178,4 +218,22 @@ pub struct TokenBinding {
 pub enum TokenBindingStatus {
     Present,
     Supported,
+}
+
+pub fn get_default_rp_id(origin: &str) -> String {
+    origin
+        .parse::<Uri>()
+        .ok()
+        .and_then(|u| u.authority().map(|a| a.host().to_string()))
+        .unwrap_or(origin.to_string())
+}
+
+#[test]
+fn test_default_rp_id() {
+    assert_eq!(get_default_rp_id("https://login.example.com:1337"), "login.example.com");
+    assert_eq!(get_default_rp_id("https://login.example.com"), "login.example.com");
+    assert_eq!(get_default_rp_id("http://login.example.com:1337"), "login.example.com");
+    assert_eq!(get_default_rp_id("http://login.example.com"), "login.example.com");
+    assert_eq!(get_default_rp_id("login.example.com:1337"), "login.example.com");
+    assert_eq!(get_default_rp_id("login.example.com"), "login.example.com");
 }
