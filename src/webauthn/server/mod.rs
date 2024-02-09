@@ -490,7 +490,7 @@ impl CredentialRequestBuilder {
             allow_credentials,
             user_verification: self.user_verification_requirement,
             extensions: Extensions {
-                prf: None,
+                prf: self.prf,
             },
         })
     }
