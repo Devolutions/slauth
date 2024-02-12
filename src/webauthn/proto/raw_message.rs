@@ -117,9 +117,26 @@ impl AuthenticatorData {
 
             let mut remaining = vec![0u8; cursor.remaining()];
             cursor.read_exact(&mut remaining[..])?;
-            remaining_cbor = serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(Error::CborError)?;
+            let public_key_cbor = match serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()) {
+                Ok(cred) => cred,
+                Err(e) if has_extensions && e.is_syntax() => {
+                    // serde_cbor will send a `ErrorImpl` with code: `ErrorCode::TrailingData` and offset: offset of
+                    // first extra byte if we have Extensions blob afterward.
+                    // Since `ErrorImpl` is not public, the best we can do is catch the syntax category and retry
+                    // the slice before the first offset error.
 
-            let credential_public_key = CredentialPublicKey::from_value(&remaining_cbor)?;
+                    // The offset is incorectly reported as of serde_cbor 0.11.2;
+                    // If, for example, a buffer of 93 bytes contain a valid CBOR payload from [0..77] (77 bytes,
+                    // bytes from 0 to 76 as the 77 bound is exclusive), the reported offset in the error will be 78.
+                    let offset = (e.offset() - 1) as usize;
+
+                    remaining_cbor = serde_cbor::from_slice::<serde_cbor::Value>(&remaining[offset..])?;
+                    serde_cbor::from_slice::<serde_cbor::Value>(&remaining[..offset])?
+                }
+                Err(e) => return Err(Error::CborError(e).into()),
+            };
+
+            let credential_public_key = CredentialPublicKey::from_value(&public_key_cbor)?;
 
             Some(AttestedCredentialData {
                 aaguid,
