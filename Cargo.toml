@@ -34,7 +34,7 @@ base32 = "0.4"
 hex = "0.4"
 rsa = "0.9.2"
 x509-parser = "0.15.0"
-ed25519-dalek = { version =  "2.1.0", features = ["rand_core"] }
+ed25519-dalek = { version =  "2.1.0", features = ["rand_core", "pkcs8"] }
 p256 = "0.13.2"
 rand = "0.8.5"
 

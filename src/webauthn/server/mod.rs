@@ -10,9 +10,9 @@ use crate::webauthn::{
     error::{CredentialError, Error},
     proto::{
         constants::{
-            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET,
-            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_OKP,
-            WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+            ECDAA_CURVE_ED25519, ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE,
+            WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+            WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
         },
         raw_message::{
             AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo,
@@ -363,6 +363,7 @@ impl CredentialCreationVerifier {
     }
 }
 
+#[derive(Debug)]
 pub struct CredentialRequestResult {
     pub sign_count: u32,
     pub has_user_verification: bool,
@@ -559,15 +560,12 @@ impl CredentialRequestVerifier {
 
         match &self.credential_pub.key_info {
             CoseKeyInfo::OKP(ed25519) => match ed25519.coords {
-                Coordinates::Compressed { x, y } => {
-                    key.push(y);
+                Coordinates::Compressed { x, y: _ } => {
                     key.append(&mut x.to_vec());
                 }
 
-                Coordinates::Uncompressed { x, y } => {
-                    key.push(ECDSA_Y_PREFIX_UNCOMPRESSED);
+                Coordinates::Uncompressed { x, y: _ } => {
                     key.append(&mut x.to_vec());
-                    key.append(&mut y.to_vec());
                 }
 
                 _ => return Err(Error::Other("Expected coordinates found nothing".to_owned())),
@@ -626,6 +624,12 @@ impl CredentialRequestVerifier {
 
 fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dyn VerificationAlgorithm, Error> {
     match (CoseAlgorithmIdentifier::from(id), key_info) {
+        (CoseAlgorithmIdentifier::Ed25519, CoseKeyInfo::OKP(okp)) => match okp.curve {
+            ECDAA_CURVE_ED25519 => Ok(&signature::ED25519),
+            _ => Err(Error::CredentialError(CredentialError::Other(String::from(
+                "Unsupported algorithm",
+            )))),
+        },
         (CoseAlgorithmIdentifier::EC2, CoseKeyInfo::EC2(ec2)) => match ec2.curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
@@ -634,6 +638,7 @@ fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dy
             )))),
         },
         (CoseAlgorithmIdentifier::RSA, CoseKeyInfo::RSA(_)) => Ok(&signature::RSA_PKCS1_2048_8192_SHA256),
+        (CoseAlgorithmIdentifier::RS1, CoseKeyInfo::RSA(_)) => Ok(&signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY),
         _ => Err(Error::CredentialError(CredentialError::Other(String::from(
             "Unsupported algorithm",
         )))),

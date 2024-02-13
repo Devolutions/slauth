@@ -639,6 +639,12 @@ pub enum CoseAlgorithmIdentifier {
     NotSupported,
 }
 
+impl Default for CoseAlgorithmIdentifier {
+    fn default() -> Self {
+        CoseAlgorithmIdentifier::NotSupported
+    }
+}
+
 impl From<i64> for CoseAlgorithmIdentifier {
     fn from(value: i64) -> Self {
         match value {

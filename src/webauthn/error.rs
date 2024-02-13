@@ -5,7 +5,7 @@ use serde_cbor::Error as CborError;
 use serde_json::Error as JsonError;
 use std::{
     error::Error as StdError,
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     io::Error as IoError,
 };
 #[cfg(feature = "webauthn-server")]
@@ -65,7 +65,10 @@ pub enum Error {
     RingError(Unspecified),
     Version,
     CredentialError(CredentialError),
+    ED25519Error(ed25519_dalek::ed25519::Error),
+    ED25519ErrorSPKI(ed25519_dalek::pkcs8::spki::Error),
     TpmError(TpmError),
+    Pkcs1Error(rsa::pkcs1::Error),
     Other(String),
 }
 
@@ -95,9 +98,30 @@ impl From<WebPkiError> for Error {
 }
 
 #[cfg(feature = "webauthn-server")]
+impl From<ed25519_dalek::ed25519::Error> for Error {
+    fn from(e: ed25519_dalek::ed25519::Error) -> Self {
+        Error::ED25519Error(e)
+    }
+}
+
+#[cfg(feature = "webauthn-server")]
+impl From<ed25519_dalek::pkcs8::spki::Error> for Error {
+    fn from(e: ed25519_dalek::pkcs8::spki::Error) -> Self {
+        Error::ED25519ErrorSPKI(e)
+    }
+}
+
+#[cfg(feature = "webauthn-server")]
 impl From<Unspecified> for Error {
     fn from(e: Unspecified) -> Self {
         Error::RingError(e)
+    }
+}
+
+#[cfg(feature = "webauthn-server")]
+impl From<rsa::pkcs1::Error> for Error {
+    fn from(e: rsa::pkcs1::Error) -> Self {
+        Error::Pkcs1Error(e)
     }
 }
 
@@ -128,18 +152,23 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         use Error::*;
         match self {
-            IoError(io_e) => io_e.fmt(f),
+            IoError(io_e) => std::fmt::Display::fmt(io_e, f),
             Version => write!(f, "Unsupported version"),
-            CredentialError(ce) => ce.fmt(f),
+            CredentialError(ce) => std::fmt::Display::fmt(ce, f),
             Other(s) => write!(f, "{}", s),
-            Base64Error(e) => e.fmt(f),
-            CborError(cb_e) => cb_e.fmt(f),
-            JsonError(js_e) => js_e.fmt(f),
+            Base64Error(e) => std::fmt::Display::fmt(e, f),
+            CborError(cb_e) => std::fmt::Display::fmt(cb_e, f),
+            JsonError(js_e) => std::fmt::Display::fmt(js_e, f),
             #[cfg(feature = "webauthn-server")]
-            WebPkiError(wp_e) => wp_e.fmt(f),
+            WebPkiError(wp_e) => std::fmt::Display::fmt(wp_e, f),
             #[cfg(feature = "webauthn-server")]
-            RingError(r_e) => r_e.fmt(f),
-            TpmError(tpm_e) => tpm_e.fmt(f),
+            RingError(r_e) => std::fmt::Display::fmt(r_e, f),
+            TpmError(tpm_e) => std::fmt::Display::fmt(tpm_e, f),
+            #[cfg(feature = "webauthn-server")]
+            ED25519Error(ed) => std::fmt::Display::fmt(ed, f),
+            #[cfg(feature = "webauthn-server")]
+            ED25519ErrorSPKI(eds) => std::fmt::Display::fmt(eds, f),
+            Pkcs1Error(pkc) => std::fmt::Display::fmt(pkc, f),
         }
     }
 }

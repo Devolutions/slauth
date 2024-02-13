@@ -17,10 +17,15 @@ use crate::webauthn::{
 use base64::URL_SAFE_NO_PAD;
 use ed25519_dalek::{SignatureError, Signer};
 use hmac::digest::Digest;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::ecdsa::VerifyingKey;
 use rand::rngs::OsRng;
-use rsa::{pkcs1::EncodeRsaPrivateKey, traits::PublicKeyParts};
+use rsa::{
+    pkcs1::{DecodeRsaPrivateKey, EncodeRsaPrivateKey},
+    signature::SignatureEncoding,
+    traits::PublicKeyParts,
+};
 use serde_cbor::Value;
+use sha1::Sha1;
 use sha2::Sha256;
 use uuid::Uuid;
 
@@ -33,8 +38,10 @@ use crate::webauthn::{
 };
 #[cfg(test)]
 use crate::webauthn::{
-    proto::web_message::{PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity},
-    server::CredentialCreationVerifier,
+    proto::web_message::{
+        PublicKeyCredentialDescriptor, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
+    },
+    server::{CredentialCreationVerifier, CredentialRequestVerifier},
 };
 
 #[derive(Debug)]
@@ -141,8 +148,8 @@ impl WebauthnAuthenticator {
             }
 
             CoseAlgorithmIdentifier::EC2 => {
-                let secret_key = p256::SecretKey::random(&mut OsRng);
-                let keypair = secret_key.public_key().to_encoded_point(false);
+                let secret_key = p256::ecdsa::SigningKey::random(&mut OsRng);
+                let keypair = VerifyingKey::from(&secret_key).to_encoded_point(false);
                 let y = keypair.y().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
                 let x = keypair.x().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
                 let private_key = PrivateKeyResponse {
@@ -243,6 +250,7 @@ impl WebauthnAuthenticator {
         attestation_flags: u8,
         credential_request_options: PublicKeyCredentialRequestOptions,
         origin: Option<String>,
+        user_handle: Option<Vec<u8>>,
         private_key: String,
     ) -> Result<PublicKeyCredentialRaw, WebauthnCredentialRequestError> {
         if credential_request_options
@@ -286,22 +294,36 @@ impl WebauthnAuthenticator {
             token_binding: None,
         };
         let client_data_bytes = serde_json::to_string(&collected_client_data)?.into_bytes();
+        let mut hasher = Sha256::new();
+        hasher.update(client_data_bytes.as_slice());
+        let hash = hasher.finalize_reset().to_vec();
 
         let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(&base64::decode(private_key)?)?;
 
         let signature = match private_key_response.key_alg {
             CoseAlgorithmIdentifier::Ed25519 => {
                 let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice())?;
-                key.sign(
-                    [auth_data_bytes.as_slice(), "||".as_bytes(), client_data_bytes.as_slice()]
-                        .concat()
-                        .as_slice(),
-                )
-                .to_vec()
+                key.sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice()).to_vec()
             }
-            CoseAlgorithmIdentifier::EC2 => Vec::new(),
-            CoseAlgorithmIdentifier::RSA => Vec::new(),
-            CoseAlgorithmIdentifier::RS1 => Vec::new(),
+            CoseAlgorithmIdentifier::EC2 => {
+                let key = p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                let (sig, _) = key.sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice());
+                sig.to_der().to_vec()
+            }
+            CoseAlgorithmIdentifier::RSA => {
+                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
+                let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
+                signing_key
+                    .sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice())
+                    .to_vec()
+            }
+            CoseAlgorithmIdentifier::RS1 => {
+                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
+                let signing_key = rsa::pkcs1v15::SigningKey::<Sha1>::new(key);
+                signing_key
+                    .sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice())
+                    .to_vec()
+            }
             CoseAlgorithmIdentifier::NotSupported => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
         };
 
@@ -313,7 +335,7 @@ impl WebauthnAuthenticator {
                 client_data_json: client_data_bytes,
                 authenticator_data: Some(auth_data_bytes),
                 signature: Some(signature),
-                user_handle: None,
+                user_handle,
             }),
         })
     }
@@ -398,6 +420,7 @@ fn test_best_alg() {
 
 #[test]
 fn test_credential_generation() {
+    let user_uuid = Uuid::new_v4();
     let option = PublicKeyCredentialCreationOptions {
         challenge: "test".to_owned(),
         rp: PublicKeyCredentialRpEntity {
@@ -406,14 +429,14 @@ fn test_credential_generation() {
             icon: None,
         },
         user: PublicKeyCredentialUserEntity {
-            id: Uuid::new_v4().to_string(),
+            id: user_uuid.to_string(),
             name: "test".to_owned(),
             display_name: "test".to_owned(),
             icon: None,
         },
         pub_key_cred_params: vec![PublicKeyCredentialParameters {
             auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::Ed25519.into(),
+            alg: CoseAlgorithmIdentifier::RS1.into(),
         }],
         timeout: None,
         exclude_credentials: vec![],
@@ -422,10 +445,11 @@ fn test_credential_generation() {
         extensions: None,
     };
 
+    let cred_uuid = Uuid::new_v4().into_bytes().to_vec();
     let credential = WebauthnAuthenticator::generate_credential_creation_response(
         option.clone(),
         Uuid::from_u128(0xDE503f9c_21a4_4f76_b4b7_558eb55c6f89),
-        Uuid::new_v4().into_bytes().to_vec(),
+        cred_uuid.clone(),
         Some("http://localhost".to_owned()),
         AttestationFlags::AttestedCredentialDataIncluded as u8 + AttestationFlags::UserPresent as u8,
     );
@@ -433,7 +457,41 @@ fn test_credential_generation() {
     match credential {
         Ok(cred) => {
             let mut verifier = CredentialCreationVerifier::new(cred.credential_response.into(), option, "http://localhost");
-            assert_eq!(verifier.verify().is_ok(), true)
+            let verif_res = verifier.verify();
+            assert_eq!(verif_res.is_ok(), true);
+
+            let req_option = PublicKeyCredentialRequestOptions {
+                challenge: "test".to_owned(),
+                timeout: None,
+                rp_id: Some("localhost".to_owned()),
+                allow_credentials: vec![PublicKeyCredentialDescriptor {
+                    cred_type: PublicKeyCredentialType::PublicKey,
+                    id: base64::encode_config(&cred_uuid, URL_SAFE_NO_PAD),
+                    transports: None,
+                }],
+                extensions: None,
+                user_verification: None,
+            };
+
+            let req_credential = WebauthnAuthenticator::generate_credential_request_response(
+                cred_uuid,
+                AttestationFlags::UserVerified as u8 + AttestationFlags::UserPresent as u8,
+                req_option.clone(),
+                Some("http://localhost".to_owned()),
+                Some(user_uuid.into_bytes().to_vec()),
+                cred.private_key_response,
+            )
+            .unwrap();
+
+            let mut req_verifier = CredentialRequestVerifier::new(
+                req_credential.into(),
+                verif_res.unwrap().public_key,
+                req_option,
+                "http://localhost",
+                user_uuid.as_bytes().as_slice(),
+                0,
+            );
+            assert_eq!(dbg!(req_verifier.verify()).is_ok(), true)
         }
         Err(e) => {
             panic!("{e:?}")
