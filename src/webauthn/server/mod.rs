@@ -4,6 +4,7 @@ use ring::{
 };
 use rsa::pkcs1::{der::Encode, RsaPublicKey, UintRef};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use webpki::{EndEntityCert, SignatureAlgorithm};
 
 use crate::webauthn::{
@@ -20,10 +21,10 @@ use crate::webauthn::{
         },
         tpm::TpmAlgId,
         web_message::{
-            get_default_rp_id, AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
-            PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
-            PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
-            UserVerificationRequirement,
+            get_default_rp_id, AttestationConveyancePreference, AuthenticationExtensionsPRFValues, AuthenticatorSelectionCriteria,
+            CollectedClientData, Extensions, PrfExtension, PublicKeyCredential, PublicKeyCredentialCreationOptions,
+            PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity,
+            PublicKeyCredentialType, PublicKeyCredentialUserEntity, UserVerificationRequirement,
         },
     },
 };
@@ -37,6 +38,7 @@ pub struct CredentialCreationBuilder {
     exclude_credentials: Vec<PublicKeyCredentialDescriptor>,
     supported_algorithms: Vec<CoseAlgorithmIdentifier>,
     attestation_conveyance_preference: Option<AttestationConveyancePreference>,
+    prf: Option<PrfExtension>,
 }
 
 impl CredentialCreationBuilder {
@@ -81,6 +83,17 @@ impl CredentialCreationBuilder {
 
     pub fn attestation_conveyance_preference<T: Into<Option<AttestationConveyancePreference>>>(mut self, acp: T) -> Self {
         self.attestation_conveyance_preference = acp.into();
+        self
+    }
+
+    pub fn prf<T: Into<Option<Vec<u8>>>>(mut self, first: Vec<u8>, second: T) -> Self {
+        self.prf = Some(PrfExtension {
+            eval: Some(AuthenticationExtensionsPRFValues {
+                first,
+                second: second.into(),
+            }),
+            eval_by_credential: HashMap::default(),
+        });
         self
     }
 
@@ -130,7 +143,7 @@ impl CredentialCreationBuilder {
                 user_verification: self.user_verification_requirement,
             }),
             attestation: self.attestation_conveyance_preference,
-            extensions: None,
+            extensions: Extensions { prf: self.prf },
         })
     }
 }
@@ -235,12 +248,6 @@ impl CredentialCreationVerifier {
         {
             if !has_user_verification {
                 return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
-            }
-        }
-
-        if let Some(extensions) = &self.context.extensions {
-            if !extensions.is_null() {
-                return Err(Error::CredentialError(CredentialError::Extensions));
             }
         }
 
@@ -376,6 +383,7 @@ pub struct CredentialRequestBuilder {
     rp: Option<String>,
     allow_credentials: Vec<String>,
     user_verification_requirement: Option<UserVerificationRequirement>,
+    prf: Option<PrfExtension>,
 }
 
 impl CredentialRequestBuilder {
@@ -403,6 +411,72 @@ impl CredentialRequestBuilder {
         self
     }
 
+    pub fn prf<T: Into<Option<Vec<u8>>>>(mut self, first: Vec<u8>, second: T) -> Self {
+        if let Some(prf) = self.prf.as_mut() {
+            prf.eval = Some(AuthenticationExtensionsPRFValues {
+                first,
+                second: second.into(),
+            });
+        } else {
+            self.prf = Some(PrfExtension {
+                eval: Some(AuthenticationExtensionsPRFValues {
+                    first,
+                    second: second.into(),
+                }),
+                eval_by_credential: HashMap::default(),
+            });
+        }
+
+        self
+    }
+
+    pub fn prf_credential<T: Into<Option<Vec<u8>>>>(mut self, credential_id: Vec<u8>, first: Vec<u8>, second: T) -> Self {
+        if let Some(prf) = self.prf.as_mut() {
+            let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
+            prf.eval_by_credential.insert(
+                encoded_credential_id,
+                AuthenticationExtensionsPRFValues {
+                    first,
+                    second: second.into(),
+                },
+            );
+        } else {
+            self.prf = Some(PrfExtension {
+                eval: None,
+                eval_by_credential: HashMap::default(),
+            });
+        }
+
+        self
+    }
+
+    /// Fill prf credentials from an iterator of `(credential_id, first, second)`
+    pub fn prf_credentials<T>(mut self, credentials: T) -> Self
+    where
+        T: Iterator<Item = (Vec<u8>, Vec<u8>, Option<Vec<u8>>)>,
+    {
+        if self.prf.is_none() {
+            self.prf = Some(PrfExtension {
+                eval: None,
+                eval_by_credential: HashMap::default(),
+            });
+        }
+        let prf = self.prf.as_mut().expect("initialized above");
+
+        for (credential_id, first, second) in credentials {
+            let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
+            prf.eval_by_credential.insert(
+                encoded_credential_id,
+                AuthenticationExtensionsPRFValues {
+                    first,
+                    second: second.into(),
+                },
+            );
+        }
+
+        self
+    }
+
     pub fn build(self) -> Result<PublicKeyCredentialRequestOptions, Error> {
         let challenge = self
             .challenge
@@ -422,7 +496,7 @@ impl CredentialRequestBuilder {
             rp_id: self.rp,
             allow_credentials,
             user_verification: self.user_verification_requirement,
-            extensions: None,
+            extensions: Extensions { prf: self.prf },
         })
     }
 }
@@ -541,12 +615,6 @@ impl CredentialRequestVerifier {
         if let Some(UserVerificationRequirement::Required) = self.context.user_verification.as_ref() {
             if !has_user_verification {
                 return Err(Error::CredentialError(CredentialError::UserVerifiedFlag));
-            }
-        }
-
-        if let Some(extensions) = &self.context.extensions {
-            if !extensions.is_null() {
-                return Err(Error::CredentialError(CredentialError::Extensions));
             }
         }
 

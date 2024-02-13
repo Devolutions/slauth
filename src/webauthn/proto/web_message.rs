@@ -1,8 +1,8 @@
 use http::Uri;
 use serde_derive::*;
-use serde_json::Value;
+use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename = "publicKey", rename_all = "camelCase")]
 pub struct PublicKeyCredentialCreationOptions {
     pub rp: PublicKeyCredentialRpEntity,
@@ -17,8 +17,8 @@ pub struct PublicKeyCredentialCreationOptions {
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attestation: Option<AttestationConveyancePreference>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions: Option<Value>,
+    #[serde(default, skip_serializing_if = "Extensions::is_empty")]
+    pub extensions: Extensions,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -33,11 +33,11 @@ pub struct PublicKeyCredentialRequestOptions {
     pub allow_credentials: Vec<PublicKeyCredentialDescriptor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_verification: Option<UserVerificationRequirement>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extensions: Option<Value>,
+    #[serde(default, skip_serializing_if = "Extensions::is_empty")]
+    pub extensions: Extensions,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct PublicKeyCredentialRpEntity {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -46,7 +46,7 @@ pub struct PublicKeyCredentialRpEntity {
     pub icon: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicKeyCredentialUserEntity {
     pub id: String,
@@ -56,14 +56,14 @@ pub struct PublicKeyCredentialUserEntity {
     pub icon: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct PublicKeyCredentialParameters {
     #[serde(rename = "type")]
     pub auth_type: PublicKeyCredentialType,
     pub alg: i64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq)]
 pub struct PublicKeyCredentialDescriptor {
     #[serde(rename = "type")]
     pub cred_type: PublicKeyCredentialType,
@@ -78,13 +78,13 @@ impl PartialEq for PublicKeyCredentialDescriptor {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum PublicKeyCredentialType {
     #[serde(rename = "public-key")]
     PublicKey,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub enum AuthenticatorTransport {
     #[serde(rename = "usb")]
     Usb,
@@ -96,7 +96,7 @@ pub enum AuthenticatorTransport {
     Internal,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorSelectionCriteria {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,7 +107,7 @@ pub struct AuthenticatorSelectionCriteria {
     pub user_verification: Option<UserVerificationRequirement>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum AuthenticatorAttachment {
     Platform,
@@ -123,7 +123,7 @@ pub enum UserVerificationRequirement {
     Discouraged,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum AttestationConveyancePreference {
     None,
@@ -218,6 +218,40 @@ pub struct TokenBinding {
 pub enum TokenBindingStatus {
     Present,
     Supported,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Extensions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prf: Option<PrfExtension>,
+}
+
+impl Extensions {
+    pub fn is_empty(&self) -> bool {
+        self.prf.is_none()
+    }
+}
+
+// https://w3c.github.io/webauthn/#dictdef-authenticationextensionsprfinputs
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrfExtension {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval: Option<AuthenticationExtensionsPRFValues>,
+
+    // Only supported in authentication, not creation
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub eval_by_credential: HashMap<String, AuthenticationExtensionsPRFValues>,
+}
+
+// https://w3c.github.io/webauthn/#dictdef-authenticationextensionsprfvalues
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthenticationExtensionsPRFValues {
+    pub first: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub second: Option<Vec<u8>>,
 }
 
 pub fn get_default_rp_id(origin: &str) -> String {

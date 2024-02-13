@@ -39,7 +39,7 @@ use crate::webauthn::{
 #[cfg(test)]
 use crate::webauthn::{
     proto::web_message::{
-        PublicKeyCredentialDescriptor, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
+        Extensions, PublicKeyCredentialDescriptor, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
     },
     server::{CredentialCreationVerifier, CredentialRequestVerifier},
 };
@@ -442,7 +442,7 @@ fn test_credential_generation() {
         exclude_credentials: vec![],
         authenticator_selection: None,
         attestation: None,
-        extensions: None,
+        extensions: Extensions::default(),
     };
 
     let cred_uuid = Uuid::new_v4().into_bytes().to_vec();
@@ -469,7 +469,7 @@ fn test_credential_generation() {
                     id: base64::encode_config(&cred_uuid, URL_SAFE_NO_PAD),
                     transports: None,
                 }],
-                extensions: None,
+                extensions: Extensions::default(),
                 user_verification: None,
             };
 

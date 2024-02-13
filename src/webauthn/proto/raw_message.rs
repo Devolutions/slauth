@@ -114,10 +114,13 @@ impl AuthenticatorData {
         cursor.read_exact(&mut rp_id_hash)?;
 
         let flags = cursor.read_u8()?;
+        let has_attested_credential_data = flags & (1 << 6) > 0;
+        let has_extensions = flags & (1 << 7) > 0;
 
         let sign_count = cursor.read_u32::<BigEndian>()?;
 
-        let attested_credential_data = if cursor.remaining() > 16 {
+        let mut remaining_cbor = Value::Null;
+        let attested_credential_data = if has_attested_credential_data {
             let mut aaguid = [0u8; 16];
             cursor.read_exact(&mut aaguid)?;
 
@@ -128,10 +131,26 @@ impl AuthenticatorData {
 
             let mut remaining = vec![0u8; cursor.remaining()];
             cursor.read_exact(&mut remaining[..])?;
+            let public_key_cbor = match serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()) {
+                Ok(cred) => cred,
+                Err(e) if has_extensions && e.is_syntax() => {
+                    // serde_cbor will send a `ErrorImpl` with code: `ErrorCode::TrailingData` and offset: offset of
+                    // first extra byte if we have Extensions blob afterward.
+                    // Since `ErrorImpl` is not public, the best we can do is catch the syntax category and retry
+                    // the slice before the first offset error.
 
-            let remaining_value = serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(Error::CborError)?;
+                    // The offset is incorectly reported as of serde_cbor 0.11.2;
+                    // If, for example, a buffer of 93 bytes contain a valid CBOR payload from [0..77] (77 bytes,
+                    // bytes from 0 to 76 as the 77 bound is exclusive), the reported offset in the error will be 78.
+                    let offset = (e.offset() - 1) as usize;
 
-            let credential_public_key = CredentialPublicKey::from_value(remaining_value)?;
+                    remaining_cbor = serde_cbor::from_slice::<serde_cbor::Value>(&remaining[offset..])?;
+                    serde_cbor::from_slice::<serde_cbor::Value>(&remaining[..offset])?
+                }
+                Err(e) => return Err(Error::CborError(e).into()),
+            };
+
+            let credential_public_key = CredentialPublicKey::from_value(&public_key_cbor)?;
 
             Some(AttestedCredentialData {
                 aaguid,
@@ -139,8 +158,16 @@ impl AuthenticatorData {
                 credential_public_key,
             })
         } else {
+            if has_extensions {
+                let mut remaining = vec![0u8; cursor.remaining()];
+                cursor.read_exact(&mut remaining[..])?;
+                remaining_cbor = serde_cbor::from_slice::<serde_cbor::Value>(remaining.as_slice()).map_err(Error::CborError)?;
+            }
+
             None
         };
+
+        let extensions = if has_extensions { remaining_cbor } else { Value::Null };
 
         Ok((
             AuthenticatorData {
@@ -148,7 +175,7 @@ impl AuthenticatorData {
                 flags,
                 sign_count,
                 attested_credential_data,
-                extensions: Value::Null,
+                extensions,
             },
             cursor.into_inner(),
         ))
@@ -222,10 +249,10 @@ impl CoseKeyInfo {
 }
 
 impl CredentialPublicKey {
-    pub fn from_value(value: serde_cbor::Value) -> Result<Self, Error> {
+    pub fn from_value(value: &serde_cbor::Value) -> Result<Self, Error> {
         let map = match value {
             Value::Map(m) => m,
-            _ => BTreeMap::new(),
+            _ => return Err(Error::Other("Invalid Cbor for CredentialPublicKey".to_string())),
         };
 
         let key_type = map
