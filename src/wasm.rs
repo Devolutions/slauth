@@ -7,7 +7,10 @@ use crate::{
         totp::{TOTPBuilder, TOTPContext},
         HashesAlgorithm, OtpAuth,
     },
-    webauthn::{authenticator::WebauthnAuthenticator, proto::web_message::PublicKeyCredentialCreationOptions},
+    webauthn::{
+        authenticator::WebauthnAuthenticator,
+        proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions},
+    },
 };
 
 #[wasm_bindgen]
@@ -99,14 +102,37 @@ impl PasskeyAuthenticator {
     pub fn generate_credential_creation_response(
         &self,
         options: JsValue,
-        connection_id: Vec<u8>,
+        credential_id: Vec<u8>,
         attestation_flags: u8,
         origin: Option<String>,
     ) -> Result<JsValue, String> {
         let options: PublicKeyCredentialCreationOptions = serde_wasm_bindgen::from_value(options).map_err(|e| format!("{e:?}"))?;
         let cred =
-            WebauthnAuthenticator::generate_credential_creation_response(options, self.aaguid, connection_id, origin, attestation_flags)
+            WebauthnAuthenticator::generate_credential_creation_response(options, self.aaguid, credential_id, origin, attestation_flags)
                 .map_err(|e| format!("{e:?}"))?;
+        serde_wasm_bindgen::to_value(&cred).map_err(|e| format!("{e:?}"))
+    }
+
+    #[wasm_bindgen(js_name = "generateCredentialRequestResponse")]
+    pub fn generate_credential_request_response(
+        &self,
+        options: JsValue,
+        credential_id: Vec<u8>,
+        attestation_flags: u8,
+        origin: Option<String>,
+        user_handle: Option<Vec<u8>>,
+        private_key: String,
+    ) -> Result<JsValue, String> {
+        let options: PublicKeyCredentialRequestOptions = serde_wasm_bindgen::from_value(options).map_err(|e| format!("{e:?}"))?;
+        let cred = WebauthnAuthenticator::generate_credential_request_response(
+            credential_id,
+            attestation_flags,
+            options,
+            origin,
+            user_handle,
+            private_key,
+        )
+        .map_err(|e| format!("{e:?}"))?;
         serde_wasm_bindgen::to_value(&cred).map_err(|e| format!("{e:?}"))
     }
 }

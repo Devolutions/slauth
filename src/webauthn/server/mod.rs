@@ -706,7 +706,6 @@ fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dy
             )))),
         },
         (CoseAlgorithmIdentifier::RSA, CoseKeyInfo::RSA(_)) => Ok(&signature::RSA_PKCS1_2048_8192_SHA256),
-        (CoseAlgorithmIdentifier::RS1, CoseKeyInfo::RSA(_)) => Ok(&signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY),
         _ => Err(Error::CredentialError(CredentialError::Other(String::from(
             "Unsupported algorithm",
         )))),

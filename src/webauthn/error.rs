@@ -65,10 +65,7 @@ pub enum Error {
     RingError(Unspecified),
     Version,
     CredentialError(CredentialError),
-    ED25519Error(ed25519_dalek::ed25519::Error),
-    ED25519ErrorSPKI(ed25519_dalek::pkcs8::spki::Error),
     TpmError(TpmError),
-    Pkcs1Error(rsa::pkcs1::Error),
     Other(String),
 }
 
@@ -98,30 +95,9 @@ impl From<WebPkiError> for Error {
 }
 
 #[cfg(feature = "webauthn-server")]
-impl From<ed25519_dalek::ed25519::Error> for Error {
-    fn from(e: ed25519_dalek::ed25519::Error) -> Self {
-        Error::ED25519Error(e)
-    }
-}
-
-#[cfg(feature = "webauthn-server")]
-impl From<ed25519_dalek::pkcs8::spki::Error> for Error {
-    fn from(e: ed25519_dalek::pkcs8::spki::Error) -> Self {
-        Error::ED25519ErrorSPKI(e)
-    }
-}
-
-#[cfg(feature = "webauthn-server")]
 impl From<Unspecified> for Error {
     fn from(e: Unspecified) -> Self {
         Error::RingError(e)
-    }
-}
-
-#[cfg(feature = "webauthn-server")]
-impl From<rsa::pkcs1::Error> for Error {
-    fn from(e: rsa::pkcs1::Error) -> Self {
-        Error::Pkcs1Error(e)
     }
 }
 
@@ -164,11 +140,6 @@ impl Display for Error {
             #[cfg(feature = "webauthn-server")]
             RingError(r_e) => std::fmt::Display::fmt(r_e, f),
             TpmError(tpm_e) => std::fmt::Display::fmt(tpm_e, f),
-            #[cfg(feature = "webauthn-server")]
-            ED25519Error(ed) => std::fmt::Display::fmt(ed, f),
-            #[cfg(feature = "webauthn-server")]
-            ED25519ErrorSPKI(eds) => std::fmt::Display::fmt(eds, f),
-            Pkcs1Error(pkc) => std::fmt::Display::fmt(pkc, f),
         }
     }
 }

@@ -101,7 +101,7 @@ impl WebauthnAuthenticator {
     pub fn generate_credential_creation_response(
         credential_creation_options: PublicKeyCredentialCreationOptions,
         aaguid: Uuid,
-        connection_id: Vec<u8>,
+        credential_id: Vec<u8>,
         origin: Option<String>,
         attestation_flags: u8,
     ) -> Result<AuthenticatorCredentialCreationResponse, WebauthnCredentialRequestError> {
@@ -189,7 +189,7 @@ impl WebauthnAuthenticator {
         let attested_credential_data = if attestation_flags & AttestationFlags::AttestedCredentialDataIncluded as u8 != 0 {
             Some(AttestedCredentialData {
                 aaguid: aaguid.into_bytes(),
-                credential_id: connection_id.clone(),
+                credential_id: credential_id.clone(),
                 credential_public_key: CredentialPublicKey {
                     key_type: key_info.key_type(),
                     alg: alg.into(),
@@ -228,8 +228,8 @@ impl WebauthnAuthenticator {
         };
 
         let credential = PublicKeyCredentialRaw {
-            id: base64::encode_config(connection_id.clone(), URL_SAFE_NO_PAD),
-            raw_id: connection_id,
+            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
+            raw_id: credential_id,
             response: Some(AuthenticatorAttestationResponseRaw {
                 attestation_object: Some(attestation_object),
                 client_data_json: serde_json::to_string(&collected_client_data)?.into_bytes(),
@@ -246,7 +246,7 @@ impl WebauthnAuthenticator {
     }
 
     pub fn generate_credential_request_response(
-        connection_id: Vec<u8>,
+        credential_id: Vec<u8>,
         attestation_flags: u8,
         credential_request_options: PublicKeyCredentialRequestOptions,
         origin: Option<String>,
@@ -328,8 +328,8 @@ impl WebauthnAuthenticator {
         };
 
         Ok(PublicKeyCredentialRaw {
-            id: base64::encode_config(connection_id.clone(), URL_SAFE_NO_PAD),
-            raw_id: connection_id,
+            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
+            raw_id: credential_id,
             response: Some(AuthenticatorAttestationResponseRaw {
                 attestation_object: None,
                 client_data_json: client_data_bytes,
@@ -420,81 +420,87 @@ fn test_best_alg() {
 
 #[test]
 fn test_credential_generation() {
-    let user_uuid = Uuid::new_v4();
-    let option = PublicKeyCredentialCreationOptions {
-        challenge: "test".to_owned(),
-        rp: PublicKeyCredentialRpEntity {
-            id: Some("localhost".to_owned()),
-            name: "localhost".to_owned(),
-            icon: None,
-        },
-        user: PublicKeyCredentialUserEntity {
-            id: user_uuid.to_string(),
-            name: "test".to_owned(),
-            display_name: "test".to_owned(),
-            icon: None,
-        },
-        pub_key_cred_params: vec![PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::RS1.into(),
-        }],
-        timeout: None,
-        exclude_credentials: vec![],
-        authenticator_selection: None,
-        attestation: None,
-        extensions: Extensions::default(),
-    };
+    for alg in [
+        CoseAlgorithmIdentifier::Ed25519,
+        CoseAlgorithmIdentifier::EC2,
+        CoseAlgorithmIdentifier::RSA,
+    ] {
+        let user_uuid = Uuid::new_v4();
+        let option = PublicKeyCredentialCreationOptions {
+            challenge: "test".to_owned(),
+            rp: PublicKeyCredentialRpEntity {
+                id: Some("localhost".to_owned()),
+                name: "localhost".to_owned(),
+                icon: None,
+            },
+            user: PublicKeyCredentialUserEntity {
+                id: user_uuid.to_string(),
+                name: "test".to_owned(),
+                display_name: "test".to_owned(),
+                icon: None,
+            },
+            pub_key_cred_params: vec![PublicKeyCredentialParameters {
+                auth_type: PublicKeyCredentialType::PublicKey,
+                alg: alg.into(),
+            }],
+            timeout: None,
+            exclude_credentials: vec![],
+            authenticator_selection: None,
+            attestation: None,
+            extensions: Extensions::default(),
+        };
 
-    let cred_uuid = Uuid::new_v4().into_bytes().to_vec();
-    let credential = WebauthnAuthenticator::generate_credential_creation_response(
-        option.clone(),
-        Uuid::from_u128(0xDE503f9c_21a4_4f76_b4b7_558eb55c6f89),
-        cred_uuid.clone(),
-        Some("http://localhost".to_owned()),
-        AttestationFlags::AttestedCredentialDataIncluded as u8 + AttestationFlags::UserPresent as u8,
-    );
+        let cred_uuid = Uuid::new_v4().into_bytes().to_vec();
+        let credential = WebauthnAuthenticator::generate_credential_creation_response(
+            option.clone(),
+            Uuid::from_u128(0xDE503f9c_21a4_4f76_b4b7_558eb55c6f89),
+            cred_uuid.clone(),
+            Some("http://localhost".to_owned()),
+            AttestationFlags::AttestedCredentialDataIncluded as u8 + AttestationFlags::UserPresent as u8,
+        );
 
-    match credential {
-        Ok(cred) => {
-            let mut verifier = CredentialCreationVerifier::new(cred.credential_response.into(), option, "http://localhost");
-            let verif_res = verifier.verify();
-            assert_eq!(verif_res.is_ok(), true);
+        match credential {
+            Ok(cred) => {
+                let mut verifier = CredentialCreationVerifier::new(cred.credential_response.into(), option, "http://localhost");
+                let verif_res = verifier.verify();
+                assert_eq!(verif_res.is_ok(), true);
 
-            let req_option = PublicKeyCredentialRequestOptions {
-                challenge: "test".to_owned(),
-                timeout: None,
-                rp_id: Some("localhost".to_owned()),
-                allow_credentials: vec![PublicKeyCredentialDescriptor {
-                    cred_type: PublicKeyCredentialType::PublicKey,
-                    id: base64::encode_config(&cred_uuid, URL_SAFE_NO_PAD),
-                    transports: None,
-                }],
-                extensions: Extensions::default(),
-                user_verification: None,
-            };
+                let req_option = PublicKeyCredentialRequestOptions {
+                    challenge: "test".to_owned(),
+                    timeout: None,
+                    rp_id: Some("localhost".to_owned()),
+                    allow_credentials: vec![PublicKeyCredentialDescriptor {
+                        cred_type: PublicKeyCredentialType::PublicKey,
+                        id: base64::encode_config(&cred_uuid, URL_SAFE_NO_PAD),
+                        transports: None,
+                    }],
+                    extensions: Extensions::default(),
+                    user_verification: None,
+                };
 
-            let req_credential = WebauthnAuthenticator::generate_credential_request_response(
-                cred_uuid,
-                AttestationFlags::UserVerified as u8 + AttestationFlags::UserPresent as u8,
-                req_option.clone(),
-                Some("http://localhost".to_owned()),
-                Some(user_uuid.into_bytes().to_vec()),
-                cred.private_key_response,
-            )
-            .unwrap();
+                let req_credential = WebauthnAuthenticator::generate_credential_request_response(
+                    cred_uuid,
+                    AttestationFlags::UserVerified as u8 + AttestationFlags::UserPresent as u8,
+                    req_option.clone(),
+                    Some("http://localhost".to_owned()),
+                    Some(user_uuid.into_bytes().to_vec()),
+                    cred.private_key_response,
+                )
+                .unwrap();
 
-            let mut req_verifier = CredentialRequestVerifier::new(
-                req_credential.into(),
-                verif_res.unwrap().public_key,
-                req_option,
-                "http://localhost",
-                user_uuid.as_bytes().as_slice(),
-                0,
-            );
-            assert_eq!(dbg!(req_verifier.verify()).is_ok(), true)
-        }
-        Err(e) => {
-            panic!("{e:?}")
+                let mut req_verifier = CredentialRequestVerifier::new(
+                    req_credential.into(),
+                    verif_res.unwrap().public_key,
+                    req_option,
+                    "http://localhost",
+                    user_uuid.as_bytes().as_slice(),
+                    0,
+                );
+                assert_eq!(req_verifier.verify().is_ok(), true)
+            }
+            Err(e) => {
+                panic!("{e:?}")
+            }
         }
     }
 }
