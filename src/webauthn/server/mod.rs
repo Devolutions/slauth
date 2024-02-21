@@ -1,19 +1,19 @@
-use std::collections::HashMap;
 use ring::{
     signature,
     signature::{UnparsedPublicKey, VerificationAlgorithm},
 };
 use rsa::pkcs1::{der::Encode, RsaPublicKey, UintRef};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use webpki::{EndEntityCert, SignatureAlgorithm};
-use http::Uri;
 
 use crate::webauthn::{
     error::{CredentialError, Error},
     proto::{
         constants::{
-            ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE, WEBAUTHN_REQUEST_TYPE_GET,
-            WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+            ECDAA_CURVE_ED25519, ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE,
+            WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+            WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
         },
         raw_message::{
             AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo,
@@ -21,10 +21,10 @@ use crate::webauthn::{
         },
         tpm::TpmAlgId,
         web_message::{
-            AttestationConveyancePreference, AuthenticatorSelectionCriteria, CollectedClientData, PublicKeyCredential,
-            PublicKeyCredentialCreationOptions, PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
-            PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity,
-            UserVerificationRequirement, Extensions, PrfExtension, AuthenticationExtensionsPRFValues,
+            get_default_rp_id, AttestationConveyancePreference, AuthenticationExtensionsPRFValues, AuthenticatorSelectionCriteria,
+            CollectedClientData, Extensions, PrfExtension, PublicKeyCredential, PublicKeyCredentialCreationOptions,
+            PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity,
+            PublicKeyCredentialType, PublicKeyCredentialUserEntity, UserVerificationRequirement,
         },
     },
 };
@@ -143,9 +143,7 @@ impl CredentialCreationBuilder {
                 user_verification: self.user_verification_requirement,
             }),
             attestation: self.attestation_conveyance_preference,
-            extensions: Extensions {
-                prf: self.prf,
-            },
+            extensions: Extensions { prf: self.prf },
         })
     }
 }
@@ -163,6 +161,7 @@ struct Rp {
     pub id: Option<String>,
 }
 
+#[derive(Debug)]
 pub struct CredentialCreationResult {
     pub public_key: CredentialPublicKey,
     pub sign_count: u32,
@@ -259,7 +258,7 @@ impl CredentialCreationVerifier {
 
         if !matches!(
             attested_credential_data.credential_public_key.key_type,
-            WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA
+            WEBAUTH_PUBLIC_KEY_TYPE_EC2 | WEBAUTH_PUBLIC_KEY_TYPE_RSA | WEBAUTH_PUBLIC_KEY_TYPE_OKP
         ) {
             return Err(Error::CredentialError(CredentialError::KeyType));
         }
@@ -371,6 +370,7 @@ impl CredentialCreationVerifier {
     }
 }
 
+#[derive(Debug)]
 pub struct CredentialRequestResult {
     pub sign_count: u32,
     pub has_user_verification: bool,
@@ -430,14 +430,16 @@ impl CredentialRequestBuilder {
         self
     }
 
-
     pub fn prf_credential<T: Into<Option<Vec<u8>>>>(mut self, credential_id: Vec<u8>, first: Vec<u8>, second: T) -> Self {
         if let Some(prf) = self.prf.as_mut() {
             let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
-            prf.eval_by_credential.insert(encoded_credential_id, AuthenticationExtensionsPRFValues {
-                first,
-                second: second.into(),
-            });
+            prf.eval_by_credential.insert(
+                encoded_credential_id,
+                AuthenticationExtensionsPRFValues {
+                    first,
+                    second: second.into(),
+                },
+            );
         } else {
             self.prf = Some(PrfExtension {
                 eval: None,
@@ -450,7 +452,9 @@ impl CredentialRequestBuilder {
 
     /// Fill prf credentials from an iterator of `(credential_id, first, second)`
     pub fn prf_credentials<T>(mut self, credentials: T) -> Self
-        where T: Iterator<Item = (Vec<u8>, Vec<u8>, Option<Vec<u8>>)> {
+    where
+        T: Iterator<Item = (Vec<u8>, Vec<u8>, Option<Vec<u8>>)>,
+    {
         if self.prf.is_none() {
             self.prf = Some(PrfExtension {
                 eval: None,
@@ -461,10 +465,13 @@ impl CredentialRequestBuilder {
 
         for (credential_id, first, second) in credentials {
             let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
-            prf.eval_by_credential.insert(encoded_credential_id, AuthenticationExtensionsPRFValues {
-                first,
-                second: second.into(),
-            });
+            prf.eval_by_credential.insert(
+                encoded_credential_id,
+                AuthenticationExtensionsPRFValues {
+                    first,
+                    second: second.into(),
+                },
+            );
         }
 
         self
@@ -489,9 +496,7 @@ impl CredentialRequestBuilder {
             rp_id: self.rp,
             allow_credentials,
             user_verification: self.user_verification_requirement,
-            extensions: Extensions {
-                prf: self.prf,
-            },
+            extensions: Extensions { prf: self.prf },
         })
     }
 }
@@ -622,6 +627,18 @@ impl CredentialRequestVerifier {
         let mut key = Vec::new();
 
         match &self.credential_pub.key_info {
+            CoseKeyInfo::OKP(ed25519) => match ed25519.coords {
+                Coordinates::Compressed { x, y: _ } => {
+                    key.append(&mut x.to_vec());
+                }
+
+                Coordinates::Uncompressed { x, y: _ } => {
+                    key.append(&mut x.to_vec());
+                }
+
+                _ => return Err(Error::Other("Expected coordinates found nothing".to_owned())),
+            },
+
             CoseKeyInfo::EC2(ec2) => match ec2.coords {
                 Coordinates::Compressed { x, y } => {
                     key.push(y);
@@ -675,6 +692,12 @@ impl CredentialRequestVerifier {
 
 fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dyn VerificationAlgorithm, Error> {
     match (CoseAlgorithmIdentifier::from(id), key_info) {
+        (CoseAlgorithmIdentifier::Ed25519, CoseKeyInfo::OKP(okp)) => match okp.curve {
+            ECDAA_CURVE_ED25519 => Ok(&signature::ED25519),
+            _ => Err(Error::CredentialError(CredentialError::Other(String::from(
+                "Unsupported algorithm",
+            )))),
+        },
         (CoseAlgorithmIdentifier::EC2, CoseKeyInfo::EC2(ec2)) => match ec2.curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
@@ -691,21 +714,4 @@ fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dy
 fn guid_bytes_to_string(guid: &[u8; 16]) -> Option<String> {
     let uuid = uuid::Uuid::from_slice(guid).ok()?;
     Some(uuid.hyphenated().to_string())
-}
-
-fn get_default_rp_id(origin: &str) -> String {
-    origin.parse::<Uri>()
-        .ok()
-        .and_then(|u| u.authority().map(|a| a.host().to_string()))
-        .unwrap_or(origin.to_string())
-}
-
-#[test]
-fn test_default_rp_id() {
-    assert_eq!(get_default_rp_id("https://login.example.com:1337"), "login.example.com");
-    assert_eq!(get_default_rp_id("https://login.example.com"), "login.example.com");
-    assert_eq!(get_default_rp_id("http://login.example.com:1337"), "login.example.com");
-    assert_eq!(get_default_rp_id("http://login.example.com"), "login.example.com");
-    assert_eq!(get_default_rp_id("login.example.com:1337"), "login.example.com");
-    assert_eq!(get_default_rp_id("login.example.com"), "login.example.com");
 }

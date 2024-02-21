@@ -4,17 +4,18 @@ use crate::webauthn::{
         constants::{
             ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
             WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
-            WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+            WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
         },
         tpm::TPM,
     },
 };
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
-use serde_cbor::Value;
+use serde_cbor::{to_vec, Value};
 use serde_derive::*;
 use std::{
-    io::{Cursor, Read},
+    collections::BTreeMap,
+    io::{Cursor, Read, Write},
     str::FromStr,
 };
 
@@ -80,6 +81,19 @@ pub enum AttestationStatement {
     AndroidKey(AndroidKey),
     AndroidSafetynet(AndroidSafetynet),
     None,
+}
+
+impl AttestationStatement {
+    pub fn to_cbor(self) -> Result<Value, Error> {
+        match self {
+            AttestationStatement::Packed(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
+            AttestationStatement::TPM(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
+            AttestationStatement::FidoU2F(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
+            AttestationStatement::AndroidKey(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
+            AttestationStatement::AndroidSafetynet(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
+            AttestationStatement::None => Ok(Value::Map(BTreeMap::new())),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -153,11 +167,7 @@ impl AuthenticatorData {
             None
         };
 
-        let extensions = if has_extensions {
-            remaining_cbor
-        } else {
-            Value::Null
-        };
+        let extensions = if has_extensions { remaining_cbor } else { Value::Null };
 
         Ok((
             AuthenticatorData {
@@ -169,6 +179,22 @@ impl AuthenticatorData {
             },
             cursor.into_inner(),
         ))
+    }
+
+    pub fn to_vec(self) -> Result<Vec<u8>, Error> {
+        let mut vec = vec![];
+        vec.write(&self.rp_id_hash)?;
+        vec.push(self.flags);
+        vec.write(&self.sign_count.to_be_bytes())?;
+
+        if let Some(att_cred_data) = self.attested_credential_data {
+            vec.write(&att_cred_data.aaguid)?;
+            vec.write(&(att_cred_data.credential_id.len() as u16).to_be_bytes())?;
+            vec.write(&att_cred_data.credential_id)?;
+            vec.write(&att_cred_data.credential_public_key.to_bytes()?)?;
+        }
+
+        Ok(vec)
     }
 }
 
@@ -200,9 +226,26 @@ pub struct EC2 {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OKP {
+    pub curve: i64,
+    pub coords: Coordinates,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum CoseKeyInfo {
+    OKP(OKP),
     EC2(EC2),
     RSA(Rsa),
+}
+
+impl CoseKeyInfo {
+    pub fn key_type(&self) -> i64 {
+        match self {
+            CoseKeyInfo::OKP(_) => 1,
+            CoseKeyInfo::EC2(_) => 2,
+            CoseKeyInfo::RSA(_) => 3,
+        }
+    }
 }
 
 impl CredentialPublicKey {
@@ -242,6 +285,9 @@ impl CredentialPublicKey {
                     .get(&Value::Integer(-2))
                     .and_then(|val| match val {
                         Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
                             let mut array = [0u8; 32];
                             array.copy_from_slice(&i[0..32]);
                             Some(array)
@@ -254,6 +300,9 @@ impl CredentialPublicKey {
                     .get(&Value::Integer(-3))
                     .and_then(|val| match val {
                         Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
                             let mut array = [0u8; 32];
                             array.copy_from_slice(&i[0..32]);
                             Some(Coordinates::Uncompressed { x, y: array })
@@ -271,6 +320,56 @@ impl CredentialPublicKey {
                     key_type,
                     alg,
                     key_info: CoseKeyInfo::EC2(EC2 { curve, coords }),
+                })
+            }
+            (WEBAUTH_PUBLIC_KEY_TYPE_OKP, CoseAlgorithmIdentifier::Ed25519) => {
+                let curve = map
+                    .get(&Value::Integer(-1))
+                    .map(|val| match val {
+                        Value::Integer(i) => *i as i64,
+                        _ => 0i64,
+                    })
+                    .ok_or_else(|| Error::Other("curve missing".to_string()))?;
+
+                let x = map
+                    .get(&Value::Integer(-2))
+                    .and_then(|val| match val {
+                        Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
+                            let mut array = [0u8; 32];
+                            array.copy_from_slice(&i[0..32]);
+                            Some(array)
+                        }
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::Other("x coordinate missing".to_string()))?;
+
+                let coords = map
+                    .get(&Value::Integer(-3))
+                    .and_then(|val| match val {
+                        Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
+                            let mut array = [0u8; 32];
+                            array.copy_from_slice(&i[0..32]);
+                            Some(Coordinates::Uncompressed { x, y: array })
+                        }
+
+                        Value::Bool(b) => Some(Coordinates::Compressed {
+                            x,
+                            y: if *b { ECDSA_Y_PREFIX_NEGATIVE } else { ECDSA_Y_PREFIX_POSITIVE },
+                        }),
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::Other("y coordinate missing".to_string()))?;
+
+                Ok(CredentialPublicKey {
+                    key_type,
+                    alg,
+                    key_info: CoseKeyInfo::OKP(OKP { curve, coords }),
                 })
             }
             (WEBAUTH_PUBLIC_KEY_TYPE_RSA, CoseAlgorithmIdentifier::RSA) => {
@@ -311,6 +410,61 @@ impl CredentialPublicKey {
             _ => Err(Error::Other("Cose key type not supported".to_owned())),
         }
     }
+
+    pub fn to_bytes(self) -> Result<Vec<u8>, Error> {
+        let mut map = BTreeMap::new();
+        match self.key_info {
+            CoseKeyInfo::EC2(value) => {
+                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_EC2 as i128));
+                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::EC2 as i128));
+                map.insert(Value::Integer(-1), Value::Integer(value.curve as i128));
+                match value.coords {
+                    Coordinates::Compressed { x, y } => {
+                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
+                        map.insert(Value::Integer(-3), Value::Bool(y == ECDSA_Y_PREFIX_NEGATIVE));
+                    }
+
+                    Coordinates::Uncompressed { x, y } => {
+                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
+                        map.insert(Value::Integer(-3), Value::Bytes(y.to_vec()));
+                    }
+
+                    Coordinates::None => {
+                        return Err(Error::Other("Invalid coordinates".to_string()));
+                    }
+                }
+            }
+
+            CoseKeyInfo::OKP(value) => {
+                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_OKP as i128));
+                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::Ed25519 as i128));
+                map.insert(Value::Integer(-1), Value::Integer(value.curve as i128));
+                match value.coords {
+                    Coordinates::Compressed { x, y } => {
+                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
+                        map.insert(Value::Integer(-3), Value::Bool(y == ECDSA_Y_PREFIX_NEGATIVE));
+                    }
+
+                    Coordinates::Uncompressed { x, y } => {
+                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
+                        map.insert(Value::Integer(-3), Value::Bytes(y.to_vec()));
+                    }
+
+                    Coordinates::None => {
+                        return Err(Error::Other("Invalid coordinates".to_string()));
+                    }
+                }
+            }
+
+            CoseKeyInfo::RSA(value) => {
+                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_RSA as i128));
+                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::RSA as i128));
+                map.insert(Value::Integer(-1), Value::Bytes(value.n));
+                map.insert(Value::Integer(-2), Value::Bytes(value.e));
+            }
+        };
+        to_vec(&map).map_err(Error::CborError)
+    }
 }
 
 pub trait Message {
@@ -318,6 +472,14 @@ pub trait Message {
     where
         Self: Sized;
     fn from_bytes(raw_values: &[u8]) -> Result<Self, Error>
+    where
+        Self: Sized;
+
+    fn to_bytes(self) -> Result<Vec<u8>, Error>
+    where
+        Self: Sized;
+
+    fn to_base64(self) -> Result<String, Error>
     where
         Self: Sized;
 }
@@ -376,6 +538,29 @@ impl Message for AttestationObject {
             fmt: value.fmt,
             att_stmt,
         })
+    }
+
+    fn to_bytes(self) -> Result<Vec<u8>, Error>
+    where
+        Self: Sized,
+    {
+        let att_stmt = match self.att_stmt {
+            Some(v) => v.to_cbor()?,
+            None => Value::Null,
+        };
+
+        let mut att_obj = BTreeMap::new();
+        att_obj.insert("authData".to_string(), Value::Bytes(self.auth_data.to_vec()?));
+        att_obj.insert("fmt".to_string(), Value::Text(self.fmt));
+        att_obj.insert("attStmt".to_string(), att_stmt);
+        to_vec(&att_obj).map_err(Error::CborError)
+    }
+
+    fn to_base64(self) -> Result<String, Error>
+    where
+        Self: Sized,
+    {
+        Ok(base64::encode(Self::to_bytes(self)?))
     }
 }
 
@@ -484,12 +669,19 @@ impl FromStr for Coordinates {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub enum CoseAlgorithmIdentifier {
+    Ed25519 = -8,
     EC2 = -7,
     RSA = -257,
     RS1 = -65535,
     NotSupported,
+}
+
+impl Default for CoseAlgorithmIdentifier {
+    fn default() -> Self {
+        CoseAlgorithmIdentifier::NotSupported
+    }
 }
 
 impl From<i64> for CoseAlgorithmIdentifier {
@@ -498,6 +690,7 @@ impl From<i64> for CoseAlgorithmIdentifier {
             -65535 => CoseAlgorithmIdentifier::RS1,
             -257 => CoseAlgorithmIdentifier::RSA,
             -7 => CoseAlgorithmIdentifier::EC2,
+            -8 => CoseAlgorithmIdentifier::Ed25519,
             _ => CoseAlgorithmIdentifier::NotSupported,
         }
     }
@@ -509,7 +702,20 @@ impl From<CoseAlgorithmIdentifier> for i64 {
             CoseAlgorithmIdentifier::RS1 => -65535,
             CoseAlgorithmIdentifier::RSA => -257,
             CoseAlgorithmIdentifier::EC2 => -7,
+            CoseAlgorithmIdentifier::Ed25519 => -8,
             _ => -65536, //Unassigned
         }
     }
+}
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub enum AttestationFlags {
+    UserPresent = 1,
+    //Reserved for future = 2
+    UserVerified = 4,
+    BackupEligible = 8,
+    BackedUp = 16,
+    //Reserved for future = 32
+    AttestedCredentialDataIncluded = 64,
+    ExtensionDataIncluded = 128,
 }

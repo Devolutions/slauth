@@ -12,7 +12,7 @@ pub mod oath;
 #[cfg(feature = "u2f")]
 pub mod u2f;
 
-#[cfg(feature = "webauthn-server")]
+#[cfg(feature = "webauthn")]
 pub mod webauthn;
 
 #[cfg(target_arch = "wasm32")]

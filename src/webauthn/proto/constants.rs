@@ -15,6 +15,7 @@ pub const WEBAUTHN_FORMAT_ANDROID_SAFETYNET: &str = "android-safetynet";
 pub const WEBAUTHN_FORMAT_ANDROID_KEY: &str = "android-key";
 pub const WEBAUTHN_FORMAT_TPM: &str = "tpm";
 
+pub const WEBAUTH_PUBLIC_KEY_TYPE_OKP: i64 = 1;
 pub const WEBAUTH_PUBLIC_KEY_TYPE_EC2: i64 = 2;
 pub const WEBAUTH_PUBLIC_KEY_TYPE_RSA: i64 = 3;
 
@@ -28,6 +29,7 @@ pub const ECDSA_Y_PREFIX_UNCOMPRESSED: u8 = 4;
 pub const ECDSA_CURVE_P256: i64 = 1;
 pub const ECDSA_CURVE_P384: i64 = 2;
 pub const ECDSA_CURVE_P521: i64 = 3;
+pub const ECDAA_CURVE_ED25519: i64 = 6;
 
 pub const TPM_GENERATED_VALUE: u32 = 0xff544347; // https://www.w3.org/TR/webauthn-2/#sctn-tpm-attestation
 

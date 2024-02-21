@@ -1,9 +1,16 @@
+use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 
-use crate::oath::{
-    decode_hex_or_base_32,
-    totp::{TOTPBuilder, TOTPContext},
-    HashesAlgorithm, OtpAuth,
+use crate::{
+    oath::{
+        decode_hex_or_base_32,
+        totp::{TOTPBuilder, TOTPContext},
+        HashesAlgorithm, OtpAuth,
+    },
+    webauthn::{
+        authenticator::WebauthnAuthenticator,
+        proto::web_message::{PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions},
+    },
 };
 
 #[wasm_bindgen]
@@ -72,5 +79,60 @@ impl Totp {
     #[wasm_bindgen(js_name = "generateCode")]
     pub fn generate_code(&self) -> String {
         self.inner.gen()
+    }
+}
+
+#[cfg(feature = "webauthn")]
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct PasskeyAuthenticator {
+    aaguid: Uuid,
+}
+
+#[cfg(feature = "webauthn")]
+#[wasm_bindgen]
+impl PasskeyAuthenticator {
+    #[wasm_bindgen(constructor)]
+    pub fn new(aaguid: String) -> Result<PasskeyAuthenticator, String> {
+        let aaguid = Uuid::parse_str(aaguid.as_str()).map_err(|_| "Failed to parse aaguid from string")?;
+        Ok(PasskeyAuthenticator { aaguid })
+    }
+
+    #[wasm_bindgen(js_name = "generateCredentialCreationResponse")]
+    pub fn generate_credential_creation_response(
+        &self,
+        options: JsValue,
+        credential_id: Vec<u8>,
+        attestation_flags: u8,
+        origin: Option<String>,
+    ) -> Result<JsValue, String> {
+        let options: PublicKeyCredentialCreationOptions = serde_wasm_bindgen::from_value(options).map_err(|e| format!("{e:?}"))?;
+        let cred =
+            WebauthnAuthenticator::generate_credential_creation_response(options, self.aaguid, credential_id, origin, attestation_flags)
+                .map_err(|e| format!("{e:?}"))?;
+        serde_wasm_bindgen::to_value(&cred).map_err(|e| format!("{e:?}"))
+    }
+
+    #[wasm_bindgen(js_name = "generateCredentialRequestResponse")]
+    pub fn generate_credential_request_response(
+        &self,
+        options: JsValue,
+        credential_id: Vec<u8>,
+        attestation_flags: u8,
+        origin: Option<String>,
+        user_handle: Option<Vec<u8>>,
+        private_key: String,
+    ) -> Result<JsValue, String> {
+        let options: PublicKeyCredentialRequestOptions = serde_wasm_bindgen::from_value(options).map_err(|e| format!("{e:?}"))?;
+        let cred = WebauthnAuthenticator::generate_credential_request_response(
+            credential_id,
+            attestation_flags,
+            options,
+            origin,
+            user_handle,
+            private_key,
+        )
+        .map_err(|e| format!("{e:?}"))?;
+        serde_wasm_bindgen::to_value(&cred).map_err(|e| format!("{e:?}"))
     }
 }

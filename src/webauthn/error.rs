@@ -1,12 +1,14 @@
 use base64::DecodeError;
+#[cfg(feature = "webauthn-server")]
 use ring::error::Unspecified;
 use serde_cbor::Error as CborError;
 use serde_json::Error as JsonError;
 use std::{
     error::Error as StdError,
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     io::Error as IoError,
 };
+#[cfg(feature = "webauthn-server")]
 use webpki::Error as WebPkiError;
 
 #[derive(Debug)]
@@ -57,7 +59,9 @@ pub enum Error {
     Base64Error(DecodeError),
     CborError(CborError),
     JsonError(JsonError),
+    #[cfg(feature = "webauthn-server")]
     WebPkiError(WebPkiError),
+    #[cfg(feature = "webauthn-server")]
     RingError(Unspecified),
     Version,
     CredentialError(CredentialError),
@@ -83,12 +87,14 @@ impl From<JsonError> for Error {
     }
 }
 
+#[cfg(feature = "webauthn-server")]
 impl From<WebPkiError> for Error {
     fn from(e: WebPkiError) -> Self {
         Error::WebPkiError(e)
     }
 }
 
+#[cfg(feature = "webauthn-server")]
 impl From<Unspecified> for Error {
     fn from(e: Unspecified) -> Self {
         Error::RingError(e)
@@ -122,16 +128,18 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         use Error::*;
         match self {
-            IoError(io_e) => io_e.fmt(f),
+            IoError(io_e) => std::fmt::Display::fmt(io_e, f),
             Version => write!(f, "Unsupported version"),
-            CredentialError(ce) => ce.fmt(f),
+            CredentialError(ce) => std::fmt::Display::fmt(ce, f),
             Other(s) => write!(f, "{}", s),
-            Base64Error(e) => e.fmt(f),
-            CborError(cb_e) => cb_e.fmt(f),
-            JsonError(js_e) => js_e.fmt(f),
-            WebPkiError(wp_e) => wp_e.fmt(f),
-            RingError(r_e) => r_e.fmt(f),
-            TpmError(tpm_e) => tpm_e.fmt(f),
+            Base64Error(e) => std::fmt::Display::fmt(e, f),
+            CborError(cb_e) => std::fmt::Display::fmt(cb_e, f),
+            JsonError(js_e) => std::fmt::Display::fmt(js_e, f),
+            #[cfg(feature = "webauthn-server")]
+            WebPkiError(wp_e) => std::fmt::Display::fmt(wp_e, f),
+            #[cfg(feature = "webauthn-server")]
+            RingError(r_e) => std::fmt::Display::fmt(r_e, f),
+            TpmError(tpm_e) => std::fmt::Display::fmt(tpm_e, f),
         }
     }
 }
