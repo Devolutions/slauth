@@ -168,7 +168,7 @@ impl WebauthnAuthenticator {
                 )
             }
 
-            CoseAlgorithmIdentifier::RSA | CoseAlgorithmIdentifier::RS1 => {
+            CoseAlgorithmIdentifier::RSA => {
                 let key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).map_err(|_| WebauthnCredentialRequestError::CouldNotGenerateKey)?;
                 let private_key = PrivateKeyResponse {
                     private_key: key.to_pkcs1_der()?.to_bytes().to_vec(),
@@ -317,14 +317,7 @@ impl WebauthnAuthenticator {
                     .sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice())
                     .to_vec()
             }
-            CoseAlgorithmIdentifier::RS1 => {
-                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
-                let signing_key = rsa::pkcs1v15::SigningKey::<Sha1>::new(key);
-                signing_key
-                    .sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice())
-                    .to_vec()
-            }
-            CoseAlgorithmIdentifier::NotSupported => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+            _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
         };
 
         Ok(PublicKeyCredentialRaw {
@@ -345,7 +338,6 @@ impl WebauthnAuthenticator {
     ) -> Result<CoseAlgorithmIdentifier, WebauthnCredentialRequestError> {
         //Order of preference for credential type is: Ed25519 > EC2 > RSA > RS1
         let mut possible_credential_types = vec![
-            CoseAlgorithmIdentifier::RS1,
             CoseAlgorithmIdentifier::RSA,
             CoseAlgorithmIdentifier::EC2,
             CoseAlgorithmIdentifier::Ed25519,
