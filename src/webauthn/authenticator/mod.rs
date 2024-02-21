@@ -109,7 +109,7 @@ impl WebauthnAuthenticator {
             .authenticator_selection
             .as_ref()
             .and_then(|auth_selection| auth_selection.user_verification.as_ref())
-            .filter(|user_verif| *user_verif == &UserVerificationRequirement::Required)
+            .filter(|user_verif| **user_verif == UserVerificationRequirement::Required)
             .is_some()
             && (attestation_flags & AttestationFlags::UserVerified as u8 == 0)
         {
@@ -256,7 +256,7 @@ impl WebauthnAuthenticator {
         if credential_request_options
             .user_verification
             .as_ref()
-            .filter(|user_verif| *user_verif == &UserVerificationRequirement::Required)
+            .filter(|user_verif| **user_verif == UserVerificationRequirement::Required)
             .is_some()
             && (attestation_flags & AttestationFlags::UserVerified as u8 == 0)
         {

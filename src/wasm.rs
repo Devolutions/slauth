@@ -93,9 +93,9 @@ pub struct PasskeyAuthenticator {
 #[wasm_bindgen]
 impl PasskeyAuthenticator {
     #[wasm_bindgen(constructor)]
-    pub fn new(aaguid: String) -> PasskeyAuthenticator {
-        let aaguid = Uuid::parse_str(aaguid.as_str()).expect("Failed to parse aaguid from string");
-        PasskeyAuthenticator { aaguid }
+    pub fn new(aaguid: String) -> Result<PasskeyAuthenticator, String> {
+        let aaguid = Uuid::parse_str(aaguid.as_str()).map_err(|_| "Failed to parse aaguid from string")?;
+        Ok(PasskeyAuthenticator { aaguid })
     }
 
     #[wasm_bindgen(js_name = "generateCredentialCreationResponse")]

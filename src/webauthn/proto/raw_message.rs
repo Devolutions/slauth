@@ -285,6 +285,9 @@ impl CredentialPublicKey {
                     .get(&Value::Integer(-2))
                     .and_then(|val| match val {
                         Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
                             let mut array = [0u8; 32];
                             array.copy_from_slice(&i[0..32]);
                             Some(array)
@@ -297,6 +300,9 @@ impl CredentialPublicKey {
                     .get(&Value::Integer(-3))
                     .and_then(|val| match val {
                         Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
                             let mut array = [0u8; 32];
                             array.copy_from_slice(&i[0..32]);
                             Some(Coordinates::Uncompressed { x, y: array })
@@ -329,6 +335,9 @@ impl CredentialPublicKey {
                     .get(&Value::Integer(-2))
                     .and_then(|val| match val {
                         Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
                             let mut array = [0u8; 32];
                             array.copy_from_slice(&i[0..32]);
                             Some(array)
@@ -341,6 +350,9 @@ impl CredentialPublicKey {
                     .get(&Value::Integer(-3))
                     .and_then(|val| match val {
                         Value::Bytes(i) => {
+                            if i.len() < 32 {
+                                return None;
+                            }
                             let mut array = [0u8; 32];
                             array.copy_from_slice(&i[0..32]);
                             Some(Coordinates::Uncompressed { x, y: array })
