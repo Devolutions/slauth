@@ -25,7 +25,6 @@ use rsa::{
     traits::PublicKeyParts,
 };
 use serde_cbor::Value;
-use sha1::Sha1;
 use sha2::Sha256;
 use uuid::Uuid;
 
