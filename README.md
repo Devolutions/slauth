@@ -47,7 +47,11 @@ Status is describe by : ✔ as implemented, ❌ as not implemented and ⚠️ as
 | Raw Message |    ✔   |  [Spec](https://www.w3.org/TR/webauthn/) |
 | COSE |    ⚠️   |  [Spec](https://tools.ietf.org/html/rfc8152) |
 
-For the server side validation, only ECDSA P256 and P384 key validation is supported at this time. Eventually RSA and ECDAA Key validation will be added. 
+For the server side validation, the following algorithm are implemented:
+- `ES256`
+- `ES384`
+- `ED25519`
+- `RS256`
 
 #### Universal Authentication Framework (UAF)
 
