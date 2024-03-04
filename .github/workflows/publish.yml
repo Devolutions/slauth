@@ -1,0 +1,41 @@
+name: Publish Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      beta:
+        description: Publish to the beta channel
+        default: false
+        required: true
+        type: boolean
+
+jobs:
+  npmjs:
+    environment: npm-publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wasm
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: cargo install wasm-pack
+      working-directory: wasm
+
+    - name: Configure NPM
+      run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
+
+    - name: Build
+      run: ./build.sh
+      working-directory: wasm
+
+    - name: Publish
+      run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
+      working-directory: dist/bundler
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: npm-bundler
+        path: dist/bundler
