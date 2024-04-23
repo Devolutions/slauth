@@ -32,6 +32,7 @@ use crate::webauthn::{
     authenticator::responses::PrivateKeyResponse,
     proto::{
         constants::WEBAUTHN_REQUEST_TYPE_GET,
+        raw_message::AttestationStatement,
         web_message::{get_default_rp_id, AuthenticatorAttestationResponseRaw, PublicKeyCredentialRaw, PublicKeyCredentialRequestOptions},
     },
 };
@@ -213,7 +214,7 @@ impl WebauthnAuthenticator {
             },
             raw_auth_data: vec![],
             fmt: WEBAUTHN_FORMAT_NONE.to_owned(),
-            att_stmt: None,
+            att_stmt: Some(AttestationStatement::None),
         }
         .to_bytes()?;
 

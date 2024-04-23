@@ -43,7 +43,7 @@ impl From<slauth::webauthn::error::Error> for TestError {
 impl Responder for TestError {
     fn respond_with_builder(self, builder: Builder, _ctx: &HttpContext) -> Builder {
         match self {
-            TestError::Slauth(_) => builder.status(500),
+            TestError::Slauth(e) => builder.status(500).body(e.to_string()),
             TestError::Internal => builder.status(500),
         }
     }
