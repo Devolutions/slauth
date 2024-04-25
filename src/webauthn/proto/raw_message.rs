@@ -90,7 +90,7 @@ impl AttestationStatement {
             AttestationStatement::TPM(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
             AttestationStatement::FidoU2F(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
             AttestationStatement::AndroidKey(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
-            AttestationStatement::AndroidSafetynet(value) => serde_cbor::value::to_value(&value).map_err(Error::CborError),
+            AttestationStatement::AndroidSafetynet(value) => serde_cbor::value::to_value(value).map_err(Error::CborError),
             AttestationStatement::None => Ok(Value::Map(BTreeMap::new())),
         }
     }
@@ -147,7 +147,7 @@ impl AuthenticatorData {
                     remaining_cbor = serde_cbor::from_slice::<serde_cbor::Value>(&remaining[offset..])?;
                     serde_cbor::from_slice::<serde_cbor::Value>(&remaining[..offset])?
                 }
-                Err(e) => return Err(Error::CborError(e).into()),
+                Err(e) => return Err(Error::CborError(e)),
             };
 
             let credential_public_key = CredentialPublicKey::from_value(&public_key_cbor)?;
@@ -183,15 +183,15 @@ impl AuthenticatorData {
 
     pub fn to_vec(self) -> Result<Vec<u8>, Error> {
         let mut vec = vec![];
-        vec.write(&self.rp_id_hash)?;
+        let _ = vec.write(&self.rp_id_hash)?;
         vec.push(self.flags);
-        vec.write(&self.sign_count.to_be_bytes())?;
+        let _ = vec.write(&self.sign_count.to_be_bytes())?;
 
         if let Some(att_cred_data) = self.attested_credential_data {
-            vec.write(&att_cred_data.aaguid)?;
-            vec.write(&(att_cred_data.credential_id.len() as u16).to_be_bytes())?;
-            vec.write(&att_cred_data.credential_id)?;
-            vec.write(&att_cred_data.credential_public_key.to_bytes()?)?;
+            let _ = vec.write(&att_cred_data.aaguid)?;
+            let _ = vec.write(&(att_cred_data.credential_id.len() as u16).to_be_bytes())?;
+            let _ = vec.write(&att_cred_data.credential_id)?;
+            let _ = vec.write(&att_cred_data.credential_public_key.to_bytes()?)?;
         }
 
         Ok(vec)
@@ -669,19 +669,14 @@ impl FromStr for Coordinates {
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(PartialEq, Debug, Default, Serialize, Deserialize, Clone, Copy)]
 pub enum CoseAlgorithmIdentifier {
     Ed25519 = -8,
     EC2 = -7,
     RSA = -257,
     RS1 = -65535,
+    #[default]
     NotSupported,
-}
-
-impl Default for CoseAlgorithmIdentifier {
-    fn default() -> Self {
-        CoseAlgorithmIdentifier::NotSupported
-    }
 }
 
 impl From<i64> for CoseAlgorithmIdentifier {

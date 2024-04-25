@@ -154,11 +154,11 @@ impl From<PublicKeyCredentialRaw> for PublicKeyCredential {
         PublicKeyCredential {
             id: raw.id,
             response: raw.response.map(|response| AuthenticatorAttestationResponse {
-                attestation_object: response.attestation_object.map(|a| base64::encode(&a)),
+                attestation_object: response.attestation_object.map(base64::encode),
                 client_data_json: base64::encode(&response.client_data_json),
-                authenticator_data: response.authenticator_data.map(|a| base64::encode(&a)),
-                signature: response.signature.map(|s| base64::encode(&s)),
-                user_handle: response.user_handle.map(|u| base64::encode(&u)),
+                authenticator_data: response.authenticator_data.map(base64::encode),
+                signature: response.signature.map(base64::encode),
+                user_handle: response.user_handle.map(base64::encode),
             }),
         }
     }

@@ -142,7 +142,7 @@ impl WebauthnAuthenticator {
                 let bytes = keypair.verifying_key().to_bytes();
                 let private_key = PrivateKeyResponse {
                     private_key: keypair.to_bytes().to_vec(),
-                    key_alg: alg.clone(),
+                    key_alg: alg,
                 };
                 (
                     CoseKeyInfo::OKP(OKP {
@@ -165,7 +165,7 @@ impl WebauthnAuthenticator {
                 let x = points.x().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
                 let private_key = PrivateKeyResponse {
                     private_key: secret_key.to_bytes().to_vec(),
-                    key_alg: alg.clone(),
+                    key_alg: alg,
                 };
                 (
                     CoseKeyInfo::EC2(EC2 {
@@ -184,7 +184,7 @@ impl WebauthnAuthenticator {
                 let key = rsa::RsaPrivateKey::new(&mut OsRng, 2048).map_err(|_| WebauthnCredentialRequestError::CouldNotGenerateKey)?;
                 let private_key = PrivateKeyResponse {
                     private_key: key.to_pkcs1_der()?.to_bytes().to_vec(),
-                    key_alg: alg.clone(),
+                    key_alg: alg,
                 };
                 (
                     CoseKeyInfo::RSA(Rsa {
@@ -237,7 +237,7 @@ impl WebauthnAuthenticator {
         let collected_client_data = CollectedClientData {
             request_type: WEBAUTHN_REQUEST_TYPE_CREATE.to_owned(),
             challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
-            origin: origin.as_ref().unwrap_or_else(|| &rp_id).clone(),
+            origin: origin.as_ref().unwrap_or(rp_id).clone(),
             cross_origin: false,
             token_binding: None,
         };
@@ -309,7 +309,7 @@ impl WebauthnAuthenticator {
         let collected_client_data = CollectedClientData {
             request_type: WEBAUTHN_REQUEST_TYPE_GET.to_owned(),
             challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
-            origin: origin.as_ref().unwrap_or_else(|| &rp_id).clone(),
+            origin: origin.as_ref().unwrap_or(rp_id).clone(),
             cross_origin: false,
             token_binding: None,
         };
@@ -355,7 +355,7 @@ impl WebauthnAuthenticator {
     }
 
     fn find_best_supported_algorithm(
-        pub_key_cred_params: &Vec<PublicKeyCredentialParameters>,
+        pub_key_cred_params: &[PublicKeyCredentialParameters],
     ) -> Result<CoseAlgorithmIdentifier, WebauthnCredentialRequestError> {
         //Order of preference for credential type is: Ed25519 > EC2 > RSA > RS1
         let mut possible_credential_types = vec![
@@ -365,8 +365,8 @@ impl WebauthnAuthenticator {
         ];
 
         let mut best_alg_index = None;
-        let mut iterator = pub_key_cred_params.iter();
-        while let Some(param) = iterator.next() {
+        let iterator = pub_key_cred_params.iter();
+        for param in iterator {
             if let Some(alg_index) = possible_credential_types
                 .iter()
                 .position(|r| *r == CoseAlgorithmIdentifier::from(param.alg))
@@ -466,7 +466,7 @@ fn test_credential_generation() {
         let cred_uuid = Uuid::new_v4().into_bytes().to_vec();
         let credential = WebauthnAuthenticator::generate_credential_creation_response(
             option.clone(),
-            Uuid::from_u128(0xDE503f9c_21a4_4f76_b4b7_558eb55c6f89),
+            Uuid::from_u128(0xde503f9c_21a4_4f76_b4b7_558eb55c6f89),
             cred_uuid.clone(),
             Some("http://localhost".to_owned()),
             AttestationFlags::AttestedCredentialDataIncluded as u8 + AttestationFlags::UserPresent as u8,
@@ -476,7 +476,7 @@ fn test_credential_generation() {
             Ok(cred) => {
                 let mut verifier = CredentialCreationVerifier::new(cred.credential_response.into(), option, "http://localhost");
                 let verif_res = verifier.verify();
-                assert_eq!(verif_res.is_ok(), true);
+                assert!(verif_res.is_ok());
 
                 let req_option = PublicKeyCredentialRequestOptions {
                     challenge: "test".to_owned(),
@@ -509,7 +509,7 @@ fn test_credential_generation() {
                     user_uuid.as_bytes().as_slice(),
                     0,
                 );
-                assert_eq!(req_verifier.verify().is_ok(), true)
+                assert!(req_verifier.verify().is_ok())
             }
             Err(e) => {
                 panic!("{e:?}")
