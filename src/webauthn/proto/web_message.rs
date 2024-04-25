@@ -192,6 +192,17 @@ pub struct AuthenticatorAttestationResponseRaw {
     pub signature: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_handle: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub transports: Vec<Transport>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum Transport {
+    Usb,
+    Nfc,
+    Ble,
+    Internal,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
