@@ -432,7 +432,7 @@ impl CredentialRequestBuilder {
 
     pub fn prf_credential<T: Into<Option<Vec<u8>>>>(mut self, credential_id: Vec<u8>, first: Vec<u8>, second: T) -> Self {
         if let Some(prf) = self.prf.as_mut() {
-            let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
+            let encoded_credential_id = base64::encode_config(credential_id, base64::URL_SAFE_NO_PAD);
             prf.eval_by_credential.insert(
                 encoded_credential_id,
                 AuthenticationExtensionsPRFValues {
@@ -465,13 +465,8 @@ impl CredentialRequestBuilder {
 
         for (credential_id, first, second) in credentials {
             let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
-            prf.eval_by_credential.insert(
-                encoded_credential_id,
-                AuthenticationExtensionsPRFValues {
-                    first,
-                    second: second.into(),
-                },
-            );
+            prf.eval_by_credential
+                .insert(encoded_credential_id, AuthenticationExtensionsPRFValues { first, second });
         }
 
         self

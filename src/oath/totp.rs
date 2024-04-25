@@ -126,11 +126,11 @@ impl TOTPContext {
 
     /// Generate a TOTP code in a given time
     fn gen_time_diff(&self, time: u64) -> String {
-        let mut counter = (time - self.initial_time) / self.period as u64;
+        let mut counter = (time - self.initial_time) / self.period;
 
         match self.clock_drift {
-            d if d > 0 => counter += d.unsigned_abs() as u64,
-            d if d < 0 => counter -= d.unsigned_abs() as u64,
+            d if d > 0 => counter += d.unsigned_abs(),
+            d if d < 0 => counter -= d.unsigned_abs(),
             _ => {}
         }
 
@@ -153,11 +153,11 @@ impl TOTPContext {
             return false;
         }
 
-        let mut counter = (get_time() - self.initial_time) / self.period as u64;
+        let mut counter = (get_time() - self.initial_time) / self.period;
 
         match self.clock_drift {
-            d if d > 0 => counter += d.unsigned_abs() as u64,
-            d if d < 0 => counter -= d.unsigned_abs() as u64,
+            d if d > 0 => counter += d.unsigned_abs(),
+            d if d < 0 => counter -= d.unsigned_abs(),
             _ => {}
         }
 
@@ -357,7 +357,7 @@ mod native_bindings {
     #[no_mangle]
     pub unsafe extern "C" fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
         let totp = &*totp;
-        strings::string_to_c_char(totp.gen_with(elapsed as u64))
+        strings::string_to_c_char(totp.gen_with(elapsed))
     }
 
     #[no_mangle]

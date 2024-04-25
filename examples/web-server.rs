@@ -75,15 +75,17 @@ impl TestController {
     }
 
     #[post("/register")]
-    async fn complete_register(&self, cred: Json<PublicKeyCredential>) -> () {
+    async fn complete_register(&self, cred: Json<PublicKeyCredential>) -> Result<(), TestError> {
         let cred = cred.into_inner();
         let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         if let Some(context) = self.reg_contexts.read().expect("should be ok").get(&uuid) {
             let mut verifier = CredentialCreationVerifier::new(cred.clone(), context.clone(), "http://localhost");
             if let Ok(result) = verifier.verify() {
-                self.creds.write().unwrap().insert(cred.id, (result.public_key, result.sign_count));
+               self.creds.write().unwrap().insert(cred.id, (result.public_key, result.sign_count));
             }
         }
+
+        Ok(())
     }
 
     #[get("/sign")]
@@ -147,6 +149,12 @@ pub struct CorsMiddleware;
 impl CorsMiddleware {
     pub fn new() -> Self {
         CorsMiddleware {}
+    }
+}
+
+impl Default for CorsMiddleware {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
