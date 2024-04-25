@@ -5,6 +5,13 @@ use serde_derive::{Deserialize, Serialize};
 pub struct AuthenticatorCredentialCreationResponse {
     pub credential_response: PublicKeyCredentialRaw,
     pub private_key_response: String,
+    pub additional_data: AuthenticatorCredentialCreationResponseAdditionalData,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AuthenticatorCredentialCreationResponseAdditionalData {
+    pub public_key_der: Vec<u8>,
+    pub public_key_alg: i64,
 }
 
 #[derive(Serialize, Deserialize)]

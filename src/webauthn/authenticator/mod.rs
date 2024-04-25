@@ -15,7 +15,7 @@ use crate::webauthn::{
     },
 };
 use base64::URL_SAFE_NO_PAD;
-use ed25519_dalek::{SignatureError, Signer};
+use ed25519_dalek::{pkcs8::EncodePublicKey, SignatureError, Signer};
 use hmac::digest::Digest;
 use p256::ecdsa::VerifyingKey;
 use rand::rngs::OsRng;
@@ -29,11 +29,13 @@ use sha2::Sha256;
 use uuid::Uuid;
 
 use crate::webauthn::{
-    authenticator::responses::PrivateKeyResponse,
+    authenticator::responses::{AuthenticatorCredentialCreationResponseAdditionalData, PrivateKeyResponse},
     proto::{
         constants::WEBAUTHN_REQUEST_TYPE_GET,
         raw_message::AttestationStatement,
-        web_message::{get_default_rp_id, AuthenticatorAttestationResponseRaw, PublicKeyCredentialRaw, PublicKeyCredentialRequestOptions},
+        web_message::{
+            get_default_rp_id, AuthenticatorAttestationResponseRaw, PublicKeyCredentialRaw, PublicKeyCredentialRequestOptions, Transport,
+        },
     },
 };
 #[cfg(test)]
@@ -57,6 +59,7 @@ pub enum WebauthnCredentialRequestError {
     RsaError(rsa::pkcs1::Error),
     Base64Error(base64::DecodeError),
     Ed25519Error(ed25519_dalek::SignatureError),
+    Ed25519SPKIError(ed25519_dalek::pkcs8::spki::Error),
 }
 
 impl From<serde_json::Error> for WebauthnCredentialRequestError {
@@ -95,6 +98,12 @@ impl From<SignatureError> for WebauthnCredentialRequestError {
     }
 }
 
+impl From<ed25519_dalek::pkcs8::spki::Error> for WebauthnCredentialRequestError {
+    fn from(e: ed25519_dalek::pkcs8::spki::Error) -> Self {
+        WebauthnCredentialRequestError::Ed25519SPKIError(e)
+    }
+}
+
 pub struct WebauthnAuthenticator;
 
 impl WebauthnAuthenticator {
@@ -127,7 +136,7 @@ impl WebauthnAuthenticator {
         hasher.update(rp_id);
 
         let alg = Self::find_best_supported_algorithm(&credential_creation_options.pub_key_cred_params)?;
-        let (key_info, private_key_response) = match alg {
+        let (key_info, private_key_response, der) = match alg {
             CoseAlgorithmIdentifier::Ed25519 => {
                 let keypair = ed25519_dalek::SigningKey::generate(&mut OsRng);
                 let bytes = keypair.verifying_key().to_bytes();
@@ -144,14 +153,16 @@ impl WebauthnAuthenticator {
                         },
                     }),
                     base64::encode(serde_cbor::to_vec(&private_key)?),
+                    keypair.verifying_key().to_public_key_der()?.to_vec(),
                 )
             }
 
             CoseAlgorithmIdentifier::EC2 => {
                 let secret_key = p256::ecdsa::SigningKey::random(&mut OsRng);
-                let keypair = VerifyingKey::from(&secret_key).to_encoded_point(false);
-                let y = keypair.y().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
-                let x = keypair.x().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
+                let verifying_key = VerifyingKey::from(&secret_key);
+                let points = verifying_key.to_encoded_point(false);
+                let y = points.y().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
+                let x = points.x().ok_or(WebauthnCredentialRequestError::CouldNotGenerateKey)?;
                 let private_key = PrivateKeyResponse {
                     private_key: secret_key.to_bytes().to_vec(),
                     key_alg: alg.clone(),
@@ -165,6 +176,7 @@ impl WebauthnAuthenticator {
                         },
                     }),
                     base64::encode(serde_cbor::to_vec(&private_key)?),
+                    verifying_key.to_public_key_der()?.to_vec(),
                 )
             }
 
@@ -180,6 +192,7 @@ impl WebauthnAuthenticator {
                         e: key.e().to_bytes_be(),
                     }),
                     base64::encode(serde_cbor::to_vec(&private_key)?),
+                    key.to_public_key().to_public_key_der()?.to_vec(),
                 )
             }
 
@@ -200,18 +213,20 @@ impl WebauthnAuthenticator {
             None
         };
 
+        let auth_data = AuthenticatorData {
+            rp_id_hash: hasher
+                .finalize_reset()
+                .to_vec()
+                .try_into()
+                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
+            flags: attestation_flags,
+            sign_count: 0,
+            attested_credential_data,
+            extensions: Value::Null,
+        };
+
         let attestation_object = AttestationObject {
-            auth_data: AuthenticatorData {
-                rp_id_hash: hasher
-                    .finalize_reset()
-                    .to_vec()
-                    .try_into()
-                    .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
-                flags: attestation_flags,
-                sign_count: 0,
-                attested_credential_data,
-                extensions: Value::Null,
-            },
+            auth_data: auth_data.clone(),
             raw_auth_data: vec![],
             fmt: WEBAUTHN_FORMAT_NONE.to_owned(),
             att_stmt: Some(AttestationStatement::None),
@@ -233,15 +248,20 @@ impl WebauthnAuthenticator {
             response: Some(AuthenticatorAttestationResponseRaw {
                 attestation_object: Some(attestation_object),
                 client_data_json: serde_json::to_string(&collected_client_data)?.into_bytes(),
-                authenticator_data: None,
+                authenticator_data: auth_data.to_vec().ok(),
                 signature: None,
                 user_handle: None,
+                transports: vec![Transport::Internal],
             }),
         };
 
         Ok(AuthenticatorCredentialCreationResponse {
             credential_response: credential,
             private_key_response,
+            additional_data: AuthenticatorCredentialCreationResponseAdditionalData {
+                public_key_der: der,
+                public_key_alg: alg.into(),
+            },
         })
     }
 
@@ -329,6 +349,7 @@ impl WebauthnAuthenticator {
                 authenticator_data: Some(auth_data_bytes),
                 signature: Some(signature),
                 user_handle,
+                transports: vec![Transport::Internal],
             }),
         })
     }

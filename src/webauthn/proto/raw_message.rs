@@ -669,7 +669,7 @@ impl FromStr for Coordinates {
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum CoseAlgorithmIdentifier {
     Ed25519 = -8,
     EC2 = -7,
