@@ -34,6 +34,11 @@ jobs:
     - name: Publish
       run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
       working-directory: dist/bundler
+    
+    - name: Update Artifactory Cache
+      run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="devolutions-crypto"
+      env:
+        github_token: ${{ secrets.DEVOLUTIONSBOT_TOKEN }}
 
   crates-io:
     environment: crates-publish
