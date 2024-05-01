@@ -36,7 +36,7 @@ jobs:
       working-directory: dist/bundler
     
     - name: Update Artifactory Cache
-      run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="devolutions-crypto"
+      run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="slauth"
       env:
         github_token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
