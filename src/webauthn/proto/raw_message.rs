@@ -11,6 +11,7 @@ use crate::webauthn::{
 };
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
+use indexmap::IndexMap;
 use serde_cbor::{to_vec, Value};
 use serde_derive::*;
 use std::{
@@ -272,7 +273,7 @@ impl CredentialPublicKey {
             .ok_or_else(|| Error::Other("algorithm missing".to_string()))?;
 
         match (key_type, CoseAlgorithmIdentifier::from(alg)) {
-            (WEBAUTH_PUBLIC_KEY_TYPE_EC2, CoseAlgorithmIdentifier::EC2) => {
+            (WEBAUTH_PUBLIC_KEY_TYPE_EC2, CoseAlgorithmIdentifier::ES256) => {
                 let curve = map
                     .get(&Value::Integer(-1))
                     .map(|val| match val {
@@ -412,21 +413,21 @@ impl CredentialPublicKey {
     }
 
     pub fn to_bytes(self) -> Result<Vec<u8>, Error> {
-        let mut map = BTreeMap::new();
+        let mut map = IndexMap::new();
         match self.key_info {
             CoseKeyInfo::EC2(value) => {
-                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_EC2 as i128));
-                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::EC2 as i128));
-                map.insert(Value::Integer(-1), Value::Integer(value.curve as i128));
+                map.insert(1, Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_EC2 as i128));
+                map.insert(3, Value::Integer(self.alg as i128));
+                map.insert(-1, Value::Integer(value.curve as i128));
                 match value.coords {
                     Coordinates::Compressed { x, y } => {
-                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
-                        map.insert(Value::Integer(-3), Value::Bool(y == ECDSA_Y_PREFIX_NEGATIVE));
+                        map.insert(-2, Value::Bytes(x.to_vec()));
+                        map.insert(-3, Value::Bool(y == ECDSA_Y_PREFIX_NEGATIVE));
                     }
 
                     Coordinates::Uncompressed { x, y } => {
-                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
-                        map.insert(Value::Integer(-3), Value::Bytes(y.to_vec()));
+                        map.insert(-2, Value::Bytes(x.to_vec()));
+                        map.insert(-3, Value::Bytes(y.to_vec()));
                     }
 
                     Coordinates::None => {
@@ -436,18 +437,18 @@ impl CredentialPublicKey {
             }
 
             CoseKeyInfo::OKP(value) => {
-                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_OKP as i128));
-                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::Ed25519 as i128));
-                map.insert(Value::Integer(-1), Value::Integer(value.curve as i128));
+                map.insert(1, Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_OKP as i128));
+                map.insert(3, Value::Integer(self.alg as i128));
+                map.insert(-1, Value::Integer(value.curve as i128));
                 match value.coords {
                     Coordinates::Compressed { x, y } => {
-                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
-                        map.insert(Value::Integer(-3), Value::Bool(y == ECDSA_Y_PREFIX_NEGATIVE));
+                        map.insert(-2, Value::Bytes(x.to_vec()));
+                        map.insert(-3, Value::Bool(y == ECDSA_Y_PREFIX_NEGATIVE));
                     }
 
                     Coordinates::Uncompressed { x, y } => {
-                        map.insert(Value::Integer(-2), Value::Bytes(x.to_vec()));
-                        map.insert(Value::Integer(-3), Value::Bytes(y.to_vec()));
+                        map.insert(-2, Value::Bytes(x.to_vec()));
+                        map.insert(-3, Value::Bytes(y.to_vec()));
                     }
 
                     Coordinates::None => {
@@ -457,10 +458,10 @@ impl CredentialPublicKey {
             }
 
             CoseKeyInfo::RSA(value) => {
-                map.insert(Value::Integer(1), Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_RSA as i128));
-                map.insert(Value::Integer(3), Value::Integer(CoseAlgorithmIdentifier::RSA as i128));
-                map.insert(Value::Integer(-1), Value::Bytes(value.n));
-                map.insert(Value::Integer(-2), Value::Bytes(value.e));
+                map.insert(1, Value::Integer(WEBAUTH_PUBLIC_KEY_TYPE_RSA as i128));
+                map.insert(3, Value::Integer(self.alg as i128));
+                map.insert(-1, Value::Bytes(value.n));
+                map.insert(-2, Value::Bytes(value.e));
             }
         };
         to_vec(&map).map_err(Error::CborError)
@@ -549,10 +550,11 @@ impl Message for AttestationObject {
             None => Value::Null,
         };
 
-        let mut att_obj = BTreeMap::new();
-        att_obj.insert("authData".to_string(), Value::Bytes(self.auth_data.to_vec()?));
+        //Using an index map here because we must preserve ordering
+        let mut att_obj = IndexMap::new();
         att_obj.insert("fmt".to_string(), Value::Text(self.fmt));
         att_obj.insert("attStmt".to_string(), att_stmt);
+        att_obj.insert("authData".to_string(), Value::Bytes(self.auth_data.to_vec()?));
         to_vec(&att_obj).map_err(Error::CborError)
     }
 
@@ -672,7 +674,7 @@ impl FromStr for Coordinates {
 #[derive(PartialEq, Debug, Default, Serialize, Deserialize, Clone, Copy)]
 pub enum CoseAlgorithmIdentifier {
     Ed25519 = -8,
-    EC2 = -7,
+    ES256 = -7,
     RSA = -257,
     RS1 = -65535,
     #[default]
@@ -684,7 +686,19 @@ impl From<i64> for CoseAlgorithmIdentifier {
         match value {
             -65535 => CoseAlgorithmIdentifier::RS1,
             -257 => CoseAlgorithmIdentifier::RSA,
-            -7 => CoseAlgorithmIdentifier::EC2,
+            -7 => CoseAlgorithmIdentifier::ES256,
+            -8 => CoseAlgorithmIdentifier::Ed25519,
+            _ => CoseAlgorithmIdentifier::NotSupported,
+        }
+    }
+}
+
+impl From<i32> for CoseAlgorithmIdentifier {
+    fn from(value: i32) -> Self {
+        match value {
+            -65535 => CoseAlgorithmIdentifier::RS1,
+            -257 => CoseAlgorithmIdentifier::RSA,
+            -7 => CoseAlgorithmIdentifier::ES256,
             -8 => CoseAlgorithmIdentifier::Ed25519,
             _ => CoseAlgorithmIdentifier::NotSupported,
         }
@@ -696,7 +710,7 @@ impl From<CoseAlgorithmIdentifier> for i64 {
         match value {
             CoseAlgorithmIdentifier::RS1 => -65535,
             CoseAlgorithmIdentifier::RSA => -257,
-            CoseAlgorithmIdentifier::EC2 => -7,
+            CoseAlgorithmIdentifier::ES256 => -7,
             CoseAlgorithmIdentifier::Ed25519 => -8,
             _ => -65536, //Unassigned
         }

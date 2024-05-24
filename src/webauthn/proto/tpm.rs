@@ -152,7 +152,7 @@ impl TPM {
                     return Err(Error::TpmError(TpmError::PublicKeyParametersMismatch(credential_pk.alg)));
                 }
             }
-            (CoseAlgorithmIdentifier::EC2, AlgParameters::ECC(params), TpmuPublicId::Ecc(ecc_points)) => {
+            (CoseAlgorithmIdentifier::ES256, AlgParameters::ECC(params), TpmuPublicId::Ecc(ecc_points)) => {
                 if let CoseKeyInfo::EC2(ec2) = &credential_pk.key_info {
                     if !matches!(
                         (ec2.curve, params.curve_id),

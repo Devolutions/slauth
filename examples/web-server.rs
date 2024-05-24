@@ -81,7 +81,7 @@ impl TestController {
         if let Some(context) = self.reg_contexts.read().expect("should be ok").get(&uuid) {
             let mut verifier = CredentialCreationVerifier::new(cred.clone(), context.clone(), "http://localhost");
             if let Ok(result) = verifier.verify() {
-               self.creds.write().unwrap().insert(cred.id, (result.public_key, result.sign_count));
+                self.creds.write().unwrap().insert(cred.id, (result.public_key, result.sign_count));
             }
         }
 
