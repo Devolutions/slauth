@@ -177,125 +177,6 @@ impl WebauthnAuthenticator {
         })
     }
 
-    pub fn generate_credential_request_response(
-        credential_id: Vec<u8>,
-        attestation_flags: u8,
-        credential_request_options: PublicKeyCredentialRequestOptions,
-        origin: Option<String>,
-        user_handle: Option<Vec<u8>>,
-        private_key: String,
-    ) -> Result<PublicKeyCredentialRaw, WebauthnCredentialRequestError> {
-        if credential_request_options
-            .user_verification
-            .as_ref()
-            .filter(|user_verif| **user_verif == UserVerificationRequirement::Required)
-            .is_some()
-            && (attestation_flags & AttestationFlags::UserVerified as u8 == 0)
-        {
-            return Err(WebauthnCredentialRequestError::UserVerificationRequired);
-        }
-
-        let binding = origin.as_ref().map(|o| get_default_rp_id(o.as_str()));
-        let rp_id = credential_request_options
-            .rp_id
-            .as_ref()
-            .or(binding.as_ref())
-            .ok_or(WebauthnCredentialRequestError::RpIdOrOriginRequired)?;
-        let mut hasher = Sha256::new();
-        hasher.update(rp_id);
-
-        let auth_data = AuthenticatorData {
-            rp_id_hash: hasher
-                .finalize_reset()
-                .to_vec()
-                .try_into()
-                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
-            flags: attestation_flags,
-            sign_count: 0,
-            attested_credential_data: None,
-            extensions: Value::Null,
-        };
-        let auth_data_bytes = auth_data.to_vec()?;
-
-        let challenge = base64::decode(credential_request_options.challenge)?;
-        let collected_client_data = CollectedClientData {
-            request_type: WEBAUTHN_REQUEST_TYPE_GET.to_owned(),
-            challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
-            origin: origin.as_ref().unwrap_or(rp_id).clone(),
-            cross_origin: false,
-            token_binding: None,
-        };
-        let client_data_bytes = serde_json::to_string(&collected_client_data)?.into_bytes();
-        let mut hasher = Sha256::new();
-        hasher.update(client_data_bytes.as_slice());
-        let hash = hasher.finalize_reset().to_vec();
-
-        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(&base64::decode(private_key)?)?;
-
-        let signature = match private_key_response.key_alg {
-            CoseAlgorithmIdentifier::Ed25519 => {
-                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice())?;
-                key.sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice()).to_vec()
-            }
-            CoseAlgorithmIdentifier::ES256 => {
-                let key = p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice())?;
-                let (sig, _) = key.sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice());
-                sig.to_der().to_vec()
-            }
-            CoseAlgorithmIdentifier::RSA => {
-                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
-                let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
-                signing_key
-                    .sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice())
-                    .to_vec()
-            }
-            _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
-        };
-
-        Ok(PublicKeyCredentialRaw {
-            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
-            raw_id: credential_id,
-            response: Some(AuthenticatorAttestationResponseRaw {
-                attestation_object: None,
-                client_data_json: client_data_bytes,
-                authenticator_data: Some(auth_data_bytes),
-                signature: Some(signature),
-                user_handle,
-                transports: vec![Transport::Internal],
-            }),
-        })
-    }
-
-    fn find_best_supported_algorithm(
-        pub_key_cred_params: &[CoseAlgorithmIdentifier],
-    ) -> Result<CoseAlgorithmIdentifier, WebauthnCredentialRequestError> {
-        //Order of preference for credential type is: Ed25519 > EC2 > RSA > RS1
-        let mut possible_credential_types = vec![
-            CoseAlgorithmIdentifier::RSA,
-            CoseAlgorithmIdentifier::ES256,
-            CoseAlgorithmIdentifier::Ed25519,
-        ];
-
-        let mut best_alg_index = None;
-        let iterator = pub_key_cred_params.iter();
-        for param in iterator {
-            if let Some(alg_index) = possible_credential_types.iter().position(|r| r == param) {
-                if best_alg_index.filter(|x| x > &alg_index).is_none() {
-                    best_alg_index = Some(alg_index);
-                }
-
-                if alg_index == possible_credential_types.len() - 1 {
-                    break;
-                }
-            }
-        }
-
-        match best_alg_index {
-            None => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
-            Some(index) => Ok(possible_credential_types.remove(index)),
-        }
-    }
-
     pub fn generate_attestation_object(
         alg: CoseAlgorithmIdentifier,
         aaguid: Uuid,
@@ -366,8 +247,6 @@ impl WebauthnAuthenticator {
             _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
         };
 
-        let mut hasher = Sha256::new();
-        hasher.update(rp_id);
         let attested_credential_data = if attestation_flags & AttestationFlags::AttestedCredentialDataIncluded as u8 != 0 {
             Some(AttestedCredentialData {
                 aaguid: aaguid.into_bytes(),
@@ -382,17 +261,7 @@ impl WebauthnAuthenticator {
             None
         };
 
-        let auth_data = AuthenticatorData {
-            rp_id_hash: hasher
-                .finalize_reset()
-                .to_vec()
-                .try_into()
-                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
-            flags: attestation_flags,
-            sign_count: 0,
-            attested_credential_data,
-            extensions: Value::Null,
-        };
+        let auth_data = Self::generate_authenticator_data(rp_id, attestation_flags, attested_credential_data)?;
 
         Ok((
             AttestationObject {
@@ -404,6 +273,139 @@ impl WebauthnAuthenticator {
             private_key_response,
             der,
         ))
+    }
+
+    pub fn generate_credential_request_response(
+        credential_id: Vec<u8>,
+        attestation_flags: u8,
+        credential_request_options: PublicKeyCredentialRequestOptions,
+        origin: Option<String>,
+        user_handle: Option<Vec<u8>>,
+        private_key: String,
+    ) -> Result<PublicKeyCredentialRaw, WebauthnCredentialRequestError> {
+        if credential_request_options
+            .user_verification
+            .as_ref()
+            .filter(|user_verif| **user_verif == UserVerificationRequirement::Required)
+            .is_some()
+            && (attestation_flags & AttestationFlags::UserVerified as u8 == 0)
+        {
+            return Err(WebauthnCredentialRequestError::UserVerificationRequired);
+        }
+
+        let binding = origin.as_ref().map(|o| get_default_rp_id(o.as_str()));
+        let rp_id = credential_request_options
+            .rp_id
+            .as_ref()
+            .or(binding.as_ref())
+            .ok_or(WebauthnCredentialRequestError::RpIdOrOriginRequired)?;
+
+        let auth_data_bytes = Self::generate_authenticator_data(rp_id, attestation_flags, None)?.to_vec()?;
+
+        let challenge = base64::decode(credential_request_options.challenge)?;
+        let collected_client_data = CollectedClientData {
+            request_type: WEBAUTHN_REQUEST_TYPE_GET.to_owned(),
+            challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
+            origin: origin.as_ref().unwrap_or(rp_id).clone(),
+            cross_origin: false,
+            token_binding: None,
+        };
+        let client_data_bytes = serde_json::to_string(&collected_client_data)?.into_bytes();
+        let mut hasher = Sha256::new();
+        hasher.update(client_data_bytes.as_slice());
+        let hash = hasher.finalize_reset().to_vec();
+
+        let signature = Self::generate_signature(auth_data_bytes.as_slice(), hash.as_slice(), private_key)?;
+
+        Ok(PublicKeyCredentialRaw {
+            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
+            raw_id: credential_id,
+            response: Some(AuthenticatorAttestationResponseRaw {
+                attestation_object: None,
+                client_data_json: client_data_bytes,
+                authenticator_data: Some(auth_data_bytes),
+                signature: Some(signature),
+                user_handle,
+                transports: vec![Transport::Internal],
+            }),
+        })
+    }
+
+    pub fn generate_authenticator_data(
+        rp_id: &str,
+        attestation_flags: u8,
+        attested_credential_data: Option<AttestedCredentialData>,
+    ) -> Result<AuthenticatorData, WebauthnCredentialRequestError> {
+        let mut hasher = Sha256::new();
+        hasher.update(rp_id);
+
+        Ok(AuthenticatorData {
+            rp_id_hash: hasher
+                .finalize_reset()
+                .to_vec()
+                .try_into()
+                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
+            flags: attestation_flags,
+            sign_count: 0,
+            attested_credential_data,
+            extensions: Value::Null,
+        })
+    }
+
+    pub fn generate_signature(
+        auth_data_bytes: &[u8],
+        client_data_hash: &[u8],
+        private_key: String,
+    ) -> Result<Vec<u8>, WebauthnCredentialRequestError> {
+        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(&base64::decode(private_key)?)?;
+
+        match private_key_response.key_alg {
+            CoseAlgorithmIdentifier::Ed25519 => {
+                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                Ok(key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
+            }
+            CoseAlgorithmIdentifier::ES256 => {
+                let key = p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                let (sig, _) = key.sign([auth_data_bytes, client_data_hash].concat().as_slice());
+                Ok(sig.to_der().to_vec())
+            }
+            CoseAlgorithmIdentifier::RSA => {
+                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
+                let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
+                Ok(signing_key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
+            }
+            _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+        }
+    }
+
+    fn find_best_supported_algorithm(
+        pub_key_cred_params: &[CoseAlgorithmIdentifier],
+    ) -> Result<CoseAlgorithmIdentifier, WebauthnCredentialRequestError> {
+        //Order of preference for credential type is: Ed25519 > EC2 > RSA > RS1
+        let mut possible_credential_types = vec![
+            CoseAlgorithmIdentifier::RSA,
+            CoseAlgorithmIdentifier::ES256,
+            CoseAlgorithmIdentifier::Ed25519,
+        ];
+
+        let mut best_alg_index = None;
+        let iterator = pub_key_cred_params.iter();
+        for param in iterator {
+            if let Some(alg_index) = possible_credential_types.iter().position(|r| r == param) {
+                if best_alg_index.filter(|x| x > &alg_index).is_none() {
+                    best_alg_index = Some(alg_index);
+                }
+
+                if alg_index == possible_credential_types.len() - 1 {
+                    break;
+                }
+            }
+        }
+
+        match best_alg_index {
+            None => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+            Some(index) => Ok(possible_credential_types.remove(index)),
+        }
     }
 }
 

@@ -14,9 +14,14 @@ mod ios {
     };
     use uuid::Uuid;
 
-    pub struct AuthenticatorResponse {
+    pub struct AuthenticatorCreationResponse {
         pub private_key_response: String,
         pub attestation_object: Vec<u8>,
+    }
+
+    pub struct AuthenticatorRequestResponse {
+        pub auth_data_bytes: Vec<u8>,
+        pub signature: Vec<u8>,
     }
 
     #[repr(C)]
@@ -26,7 +31,7 @@ mod ios {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn get_private_key_from_response(res: *mut AuthenticatorResponse) -> *mut c_char {
+    pub unsafe extern "C" fn get_private_key_from_response(res: *mut AuthenticatorCreationResponse) -> *mut c_char {
         if res.is_null() {
             return null_mut();
         }
@@ -39,7 +44,7 @@ mod ios {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn get_attestation_object_from_response(res: *mut AuthenticatorResponse) -> Buffer {
+    pub unsafe extern "C" fn get_attestation_object_from_response(res: *mut AuthenticatorCreationResponse) -> Buffer {
         if res.is_null() {
             return Buffer { data: null_mut(), len: 0 };
         }
@@ -51,7 +56,7 @@ mod ios {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn response_free(res: *mut AuthenticatorResponse) {
+    pub unsafe extern "C" fn response_free(res: *mut AuthenticatorCreationResponse) {
         let _ = Box::from_raw(res);
     }
 
@@ -64,7 +69,7 @@ mod ios {
         attestation_flags: u8,
         cose_algorithm_identifiers: *const c_int,
         cose_algorithm_identifiers_length: usize,
-    ) -> *mut AuthenticatorResponse {
+    ) -> *mut AuthenticatorCreationResponse {
         let aaguid_str = strings::c_char_to_string(aaguid);
         let aaguid = Uuid::parse_str(aaguid_str.as_str());
         if aaguid.is_err() {
@@ -104,9 +109,69 @@ mod ios {
             return null_mut();
         }
 
-        Box::into_raw(Box::new(AuthenticatorResponse {
+        Box::into_raw(Box::new(AuthenticatorCreationResponse {
             private_key_response: private_key,
             attestation_object: attestation_object_bytes.expect("Checked above"),
         }))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn generate_credential_request_response(
+        rp_id: *const c_char,
+        private_key: *const c_char,
+        attestation_flags: u8,
+        client_data_hash: *const c_uchar,
+        client_data_hash_length: usize,
+    ) -> *mut AuthenticatorRequestResponse {
+        let rp_id_str = strings::c_char_to_string(rp_id);
+        let private_key = strings::c_char_to_string(private_key);
+        let client_data_hash: Vec<u8> = std::slice::from_raw_parts(client_data_hash, client_data_hash_length).into();
+
+        let auth_data = WebauthnAuthenticator::generate_authenticator_data(rp_id_str.as_str(), u8::from_be(attestation_flags), None);
+
+        if auth_data.is_err() {
+            return null_mut();
+        }
+
+        let auth_data_bytes = auth_data.expect("Checked above").to_vec();
+        if auth_data_bytes.is_err() {
+            return null_mut();
+        }
+        let auth_data_bytes = auth_data_bytes.expect("Checked above");
+
+        let signature = WebauthnAuthenticator::generate_signature(auth_data_bytes.as_slice(), client_data_hash.as_slice(), private_key);
+
+        if signature.is_err() {
+            return null_mut();
+        }
+
+        Box::into_raw(Box::new(AuthenticatorRequestResponse {
+            auth_data_bytes,
+            signature: signature.expect("Checked above"),
+        }))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn get_auth_data_from_response(res: *mut AuthenticatorRequestResponse) -> Buffer {
+        if res.is_null() {
+            return Buffer { data: null_mut(), len: 0 };
+        }
+
+        Buffer {
+            data: (*res).auth_data_bytes.as_mut_ptr(),
+            len: (*res).auth_data_bytes.len(),
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn get_signature_from_response(res: *mut AuthenticatorRequestResponse) -> Buffer {
+        if res.is_null() {
+            return Buffer { data: null_mut(), len: 0 };
+        }
+
+        Buffer {
+            data: (*res).signature.as_mut_ptr(),
+            len: (*res).signature.len(),
+        }
     }
 }

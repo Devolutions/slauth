@@ -185,7 +185,9 @@
 
 #define TPM_GENERATED_VALUE 4283712327
 
-typedef struct AuthenticatorResponse AuthenticatorResponse;
+typedef struct AuthenticatorCreationResponse AuthenticatorCreationResponse;
+
+typedef struct AuthenticatorRequestResponse AuthenticatorRequestResponse;
 
 typedef struct ClientWebResponse ClientWebResponse;
 
@@ -197,6 +199,9 @@ typedef struct SigningKey SigningKey;
 
 typedef struct TOTPContext TOTPContext;
 
+/**
+ *
+ */
 typedef struct U2fRequest U2fRequest;
 
 typedef struct U2fRequest WebRequest;
@@ -277,16 +282,26 @@ char *signing_key_get_key_handle(struct SigningKey *s);
 
 struct SigningKey *signing_key_from_string(const char *s);
 
-char *get_private_key_from_response(struct AuthenticatorResponse *res);
+char *get_private_key_from_response(struct AuthenticatorCreationResponse *res);
 
-struct Buffer get_attestation_object_from_response(struct AuthenticatorResponse *res);
+struct Buffer get_attestation_object_from_response(struct AuthenticatorCreationResponse *res);
 
-void response_free(struct AuthenticatorResponse *res);
+void response_free(struct AuthenticatorCreationResponse *res);
 
-struct AuthenticatorResponse *generate_credential_creation_response(const char *aaguid,
-                                                                    const unsigned char *credential_id,
-                                                                    uintptr_t credential_id_length,
-                                                                    const char *rp_id,
-                                                                    uint8_t attestation_flags,
-                                                                    const int *cose_algorithm_identifiers,
-                                                                    uintptr_t cose_algorithm_identifiers_length);
+struct AuthenticatorCreationResponse *generate_credential_creation_response(const char *aaguid,
+                                                                            const unsigned char *credential_id,
+                                                                            uintptr_t credential_id_length,
+                                                                            const char *rp_id,
+                                                                            uint8_t attestation_flags,
+                                                                            const int *cose_algorithm_identifiers,
+                                                                            uintptr_t cose_algorithm_identifiers_length);
+
+struct AuthenticatorRequestResponse *generate_credential_request_response(const char *rp_id,
+                                                                          const char *private_key,
+                                                                          uint8_t attestation_flags,
+                                                                          const unsigned char *client_data_hash,
+                                                                          uintptr_t client_data_hash_length);
+
+struct Buffer get_auth_data_from_response(struct AuthenticatorRequestResponse *res);
+
+struct Buffer get_signature_from_response(struct AuthenticatorRequestResponse *res);
