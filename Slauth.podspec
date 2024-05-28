@@ -7,7 +7,7 @@ TODO: Add long description of the pod here.
                        DESC
 
   s.homepage         = 'https://github.com/Devolutions/Slauth.git'
-  s.license          = { :type => 'MIT', :file => '../../LICENSE' }
+  s.license          = { :type => 'MIT', :file => './LICENSE' }
   s.author           = { 'richerarc' => 'richer.arc@gmail.com' }
   s.source           = { :git => 'https://github.com/Devolutions/Slauth.git', :tag => s.version.to_s }
 
