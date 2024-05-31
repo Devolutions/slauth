@@ -257,11 +257,11 @@ mod native_bindings {
     #[no_mangle]
     pub unsafe extern "C" fn hotp_from_uri(uri: *const c_char) -> *mut HOTPContext {
         let uri_str = strings::c_char_to_string(uri);
-        Box::into_raw(
-            HOTPContext::from_uri(&uri_str)
-                .map(Box::new)
-                .unwrap_or_else(|_| Box::from_raw(null_mut())),
-        )
+        let hotp = HOTPContext::from_uri(&uri_str).map(Box::new);
+        match hotp {
+            Ok(hotp) => Box::into_raw(hotp),
+            Err(_) => null_mut(),
+        }
     }
 
     #[no_mangle]

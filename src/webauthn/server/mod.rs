@@ -498,7 +498,7 @@ impl CredentialRequestBuilder {
 
 fn get_alg_from_cose(id: i64) -> &'static SignatureAlgorithm {
     match CoseAlgorithmIdentifier::from(id) {
-        CoseAlgorithmIdentifier::EC2 => &webpki::ECDSA_P256_SHA256,
+        CoseAlgorithmIdentifier::ES256 => &webpki::ECDSA_P256_SHA256,
         CoseAlgorithmIdentifier::RSA => &webpki::RSA_PKCS1_2048_8192_SHA256,
         _ => &webpki::ECDSA_P256_SHA256,
     }
@@ -693,7 +693,7 @@ fn get_ring_alg_from_cose(id: i64, key_info: &CoseKeyInfo) -> Result<&'static dy
                 "Unsupported algorithm",
             )))),
         },
-        (CoseAlgorithmIdentifier::EC2, CoseKeyInfo::EC2(ec2)) => match ec2.curve {
+        (CoseAlgorithmIdentifier::ES256, CoseKeyInfo::EC2(ec2)) => match ec2.curve {
             ECDSA_CURVE_P256 => Ok(&signature::ECDSA_P256_SHA256_ASN1),
             ECDSA_CURVE_P384 => Ok(&signature::ECDSA_P384_SHA384_ASN1),
             _ => Err(Error::CredentialError(CredentialError::Other(String::from(

@@ -326,11 +326,12 @@ mod native_bindings {
     #[no_mangle]
     pub unsafe extern "C" fn totp_from_uri(uri: *const c_char) -> *mut TOTPContext {
         let uri_str = strings::c_char_to_string(uri);
-        Box::into_raw(
-            TOTPContext::from_uri(&uri_str)
-                .map(Box::new)
-                .unwrap_or_else(|_| Box::from_raw(null_mut())),
-        )
+        let totp = TOTPContext::from_uri(&uri_str).map(Box::new);
+
+        match totp {
+            Ok(totp) => Box::into_raw(totp),
+            Err(_) => null_mut(),
+        }
     }
 
     #[no_mangle]

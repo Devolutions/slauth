@@ -1,5 +1,8 @@
 pub(crate) mod responses;
 
+#[cfg(feature = "native-bindings")]
+pub(crate) mod native;
+
 use crate::webauthn::{
     authenticator::responses::AuthenticatorCredentialCreationResponse,
     error::Error,
@@ -9,9 +12,7 @@ use crate::webauthn::{
             AttestationFlags, AttestationObject, AttestedCredentialData, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier,
             CoseKeyInfo, CredentialPublicKey, Message, Rsa, EC2, OKP,
         },
-        web_message::{
-            CollectedClientData, PublicKeyCredentialCreationOptions, PublicKeyCredentialParameters, UserVerificationRequirement,
-        },
+        web_message::{CollectedClientData, PublicKeyCredentialCreationOptions, UserVerificationRequirement},
     },
 };
 use base64::URL_SAFE_NO_PAD;
@@ -132,10 +133,57 @@ impl WebauthnAuthenticator {
             .as_ref()
             .or(binding.as_ref())
             .ok_or(WebauthnCredentialRequestError::RpIdOrOriginRequired)?;
-        let mut hasher = Sha256::new();
-        hasher.update(rp_id);
 
-        let alg = Self::find_best_supported_algorithm(&credential_creation_options.pub_key_cred_params)?;
+        let algs: Vec<CoseAlgorithmIdentifier> = credential_creation_options
+            .pub_key_cred_params
+            .into_iter()
+            .map(|x| x.alg.into())
+            .collect();
+        let alg = Self::find_best_supported_algorithm(algs.as_slice())?;
+
+        let (attestation_object, private_key_response, der) =
+            Self::generate_attestation_object(alg, aaguid, &credential_id, rp_id, attestation_flags)?;
+
+        let challenge = base64::decode(credential_creation_options.challenge)?;
+        let collected_client_data = CollectedClientData {
+            request_type: WEBAUTHN_REQUEST_TYPE_CREATE.to_owned(),
+            challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
+            origin: origin.as_ref().unwrap_or(rp_id).clone(),
+            cross_origin: false,
+            token_binding: None,
+        };
+
+        let auth_data = attestation_object.auth_data.clone();
+        let credential = PublicKeyCredentialRaw {
+            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
+            raw_id: credential_id,
+            response: Some(AuthenticatorAttestationResponseRaw {
+                attestation_object: Some(attestation_object.to_bytes()?),
+                client_data_json: serde_json::to_string(&collected_client_data)?.into_bytes(),
+                authenticator_data: auth_data.to_vec().ok(),
+                signature: None,
+                user_handle: None,
+                transports: vec![Transport::Internal],
+            }),
+        };
+
+        Ok(AuthenticatorCredentialCreationResponse {
+            credential_response: credential,
+            private_key_response,
+            additional_data: AuthenticatorCredentialCreationResponseAdditionalData {
+                public_key_der: der,
+                public_key_alg: alg.into(),
+            },
+        })
+    }
+
+    pub fn generate_attestation_object(
+        alg: CoseAlgorithmIdentifier,
+        aaguid: Uuid,
+        credential_id: &Vec<u8>,
+        rp_id: &str,
+        attestation_flags: u8,
+    ) -> Result<(AttestationObject, String, Vec<u8>), WebauthnCredentialRequestError> {
         let (key_info, private_key_response, der) = match alg {
             CoseAlgorithmIdentifier::Ed25519 => {
                 let keypair = ed25519_dalek::SigningKey::generate(&mut OsRng);
@@ -157,7 +205,7 @@ impl WebauthnAuthenticator {
                 )
             }
 
-            CoseAlgorithmIdentifier::EC2 => {
+            CoseAlgorithmIdentifier::ES256 => {
                 let secret_key = p256::ecdsa::SigningKey::random(&mut OsRng);
                 let verifying_key = VerifyingKey::from(&secret_key);
                 let points = verifying_key.to_encoded_point(false);
@@ -213,56 +261,18 @@ impl WebauthnAuthenticator {
             None
         };
 
-        let auth_data = AuthenticatorData {
-            rp_id_hash: hasher
-                .finalize_reset()
-                .to_vec()
-                .try_into()
-                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
-            flags: attestation_flags,
-            sign_count: 0,
-            attested_credential_data,
-            extensions: Value::Null,
-        };
+        let auth_data = Self::generate_authenticator_data(rp_id, attestation_flags, attested_credential_data)?;
 
-        let attestation_object = AttestationObject {
-            auth_data: auth_data.clone(),
-            raw_auth_data: vec![],
-            fmt: WEBAUTHN_FORMAT_NONE.to_owned(),
-            att_stmt: Some(AttestationStatement::None),
-        }
-        .to_bytes()?;
-
-        let challenge = base64::decode(credential_creation_options.challenge)?;
-        let collected_client_data = CollectedClientData {
-            request_type: WEBAUTHN_REQUEST_TYPE_CREATE.to_owned(),
-            challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
-            origin: origin.as_ref().unwrap_or(rp_id).clone(),
-            cross_origin: false,
-            token_binding: None,
-        };
-
-        let credential = PublicKeyCredentialRaw {
-            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
-            raw_id: credential_id,
-            response: Some(AuthenticatorAttestationResponseRaw {
-                attestation_object: Some(attestation_object),
-                client_data_json: serde_json::to_string(&collected_client_data)?.into_bytes(),
-                authenticator_data: auth_data.to_vec().ok(),
-                signature: None,
-                user_handle: None,
-                transports: vec![Transport::Internal],
-            }),
-        };
-
-        Ok(AuthenticatorCredentialCreationResponse {
-            credential_response: credential,
-            private_key_response,
-            additional_data: AuthenticatorCredentialCreationResponseAdditionalData {
-                public_key_der: der,
-                public_key_alg: alg.into(),
+        Ok((
+            AttestationObject {
+                auth_data: auth_data.clone(),
+                raw_auth_data: vec![],
+                fmt: WEBAUTHN_FORMAT_NONE.to_owned(),
+                att_stmt: Some(AttestationStatement::None),
             },
-        })
+            private_key_response,
+            der,
+        ))
     }
 
     pub fn generate_credential_request_response(
@@ -289,21 +299,8 @@ impl WebauthnAuthenticator {
             .as_ref()
             .or(binding.as_ref())
             .ok_or(WebauthnCredentialRequestError::RpIdOrOriginRequired)?;
-        let mut hasher = Sha256::new();
-        hasher.update(rp_id);
 
-        let auth_data = AuthenticatorData {
-            rp_id_hash: hasher
-                .finalize_reset()
-                .to_vec()
-                .try_into()
-                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
-            flags: attestation_flags,
-            sign_count: 0,
-            attested_credential_data: None,
-            extensions: Value::Null,
-        };
-        let auth_data_bytes = auth_data.to_vec()?;
+        let auth_data_bytes = Self::generate_authenticator_data(rp_id, attestation_flags, None)?.to_vec()?;
 
         let challenge = base64::decode(credential_request_options.challenge)?;
         let collected_client_data = CollectedClientData {
@@ -318,27 +315,7 @@ impl WebauthnAuthenticator {
         hasher.update(client_data_bytes.as_slice());
         let hash = hasher.finalize_reset().to_vec();
 
-        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(&base64::decode(private_key)?)?;
-
-        let signature = match private_key_response.key_alg {
-            CoseAlgorithmIdentifier::Ed25519 => {
-                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice())?;
-                key.sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice()).to_vec()
-            }
-            CoseAlgorithmIdentifier::EC2 => {
-                let key = p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice())?;
-                let (sig, _) = key.sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice());
-                sig.to_der().to_vec()
-            }
-            CoseAlgorithmIdentifier::RSA => {
-                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
-                let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
-                signing_key
-                    .sign([auth_data_bytes.as_slice(), hash.as_slice()].concat().as_slice())
-                    .to_vec()
-            }
-            _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
-        };
+        let signature = Self::generate_signature(auth_data_bytes.as_slice(), hash.as_slice(), private_key)?;
 
         Ok(PublicKeyCredentialRaw {
             id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
@@ -354,23 +331,67 @@ impl WebauthnAuthenticator {
         })
     }
 
+    pub fn generate_authenticator_data(
+        rp_id: &str,
+        attestation_flags: u8,
+        attested_credential_data: Option<AttestedCredentialData>,
+    ) -> Result<AuthenticatorData, WebauthnCredentialRequestError> {
+        let mut hasher = Sha256::new();
+        hasher.update(rp_id);
+
+        Ok(AuthenticatorData {
+            rp_id_hash: hasher
+                .finalize_reset()
+                .to_vec()
+                .try_into()
+                .map_err(|e: Vec<u8>| WebauthnCredentialRequestError::RpIdHashInvalidLength(e.len()))?,
+            flags: attestation_flags,
+            sign_count: 0,
+            attested_credential_data,
+            extensions: Value::Null,
+        })
+    }
+
+    pub fn generate_signature(
+        auth_data_bytes: &[u8],
+        client_data_hash: &[u8],
+        private_key: String,
+    ) -> Result<Vec<u8>, WebauthnCredentialRequestError> {
+        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(&base64::decode(private_key)?)?;
+
+        match private_key_response.key_alg {
+            CoseAlgorithmIdentifier::Ed25519 => {
+                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                Ok(key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
+            }
+            CoseAlgorithmIdentifier::ES256 => {
+                let key = p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                let (sig, _) = key.sign([auth_data_bytes, client_data_hash].concat().as_slice());
+                Ok(sig.to_der().to_vec())
+            }
+            CoseAlgorithmIdentifier::RSA => {
+                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
+                let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
+                Ok(signing_key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
+            }
+            _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+        }
+    }
+
     fn find_best_supported_algorithm(
-        pub_key_cred_params: &[PublicKeyCredentialParameters],
+        pub_key_cred_params: &[CoseAlgorithmIdentifier],
     ) -> Result<CoseAlgorithmIdentifier, WebauthnCredentialRequestError> {
         //Order of preference for credential type is: Ed25519 > EC2 > RSA > RS1
         let mut possible_credential_types = vec![
             CoseAlgorithmIdentifier::RSA,
-            CoseAlgorithmIdentifier::EC2,
+            CoseAlgorithmIdentifier::ES256,
             CoseAlgorithmIdentifier::Ed25519,
         ];
 
         let mut best_alg_index = None;
         let iterator = pub_key_cred_params.iter();
         for param in iterator {
-            if let Some(alg_index) = possible_credential_types
-                .iter()
-                .position(|r| *r == CoseAlgorithmIdentifier::from(param.alg))
-            {
+            if let Some(alg_index) = possible_credential_types.iter().position(|r| r == param) {
                 if best_alg_index.filter(|x| x > &alg_index).is_none() {
                     best_alg_index = Some(alg_index);
                 }
@@ -391,51 +412,30 @@ impl WebauthnAuthenticator {
 #[test]
 fn test_best_alg() {
     let params = vec![
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::Ed25519.into(),
-        },
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::EC2.into(),
-        },
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::RS1.into(),
-        },
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::RSA.into(),
-        },
+        CoseAlgorithmIdentifier::Ed25519,
+        CoseAlgorithmIdentifier::ES256,
+        CoseAlgorithmIdentifier::RS1,
+        CoseAlgorithmIdentifier::RSA,
     ];
 
     let alg = WebauthnAuthenticator::find_best_supported_algorithm(&params).unwrap();
     assert_eq!(alg, CoseAlgorithmIdentifier::Ed25519);
 
     let params2 = vec![
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::EC2.into(),
-        },
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::RS1.into(),
-        },
-        PublicKeyCredentialParameters {
-            auth_type: PublicKeyCredentialType::PublicKey,
-            alg: CoseAlgorithmIdentifier::RSA.into(),
-        },
+        CoseAlgorithmIdentifier::ES256.into(),
+        CoseAlgorithmIdentifier::RS1.into(),
+        CoseAlgorithmIdentifier::RSA.into(),
     ];
 
     let alg = WebauthnAuthenticator::find_best_supported_algorithm(&params2).unwrap();
-    assert_eq!(alg, CoseAlgorithmIdentifier::EC2);
+    assert_eq!(alg, CoseAlgorithmIdentifier::ES256);
 }
 
 #[test]
 fn test_credential_generation() {
     for alg in [
         CoseAlgorithmIdentifier::Ed25519,
-        CoseAlgorithmIdentifier::EC2,
+        CoseAlgorithmIdentifier::ES256,
         CoseAlgorithmIdentifier::RSA,
     ] {
         let user_uuid = Uuid::new_v4();
@@ -452,7 +452,7 @@ fn test_credential_generation() {
                 display_name: "test".to_owned(),
                 icon: None,
             },
-            pub_key_cred_params: vec![PublicKeyCredentialParameters {
+            pub_key_cred_params: vec![crate::webauthn::proto::web_message::PublicKeyCredentialParameters {
                 auth_type: PublicKeyCredentialType::PublicKey,
                 alg: alg.into(),
             }],
