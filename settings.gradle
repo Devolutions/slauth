@@ -1,0 +1,2 @@
+include 'slauth'
+project(':slauth').projectDir = new File(settingsDir, 'wrappers/android')

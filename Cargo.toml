@@ -23,7 +23,6 @@ u2f = ["auth-base", "untrusted",  "serde_repr", ]
 webauthn-server = [ "webauthn", "webpki" ]
 webauthn = [ "auth-base", "bytes", "serde_cbor", "uuid", "http", "ed25519-dalek", "p256", "indexmap" ]
 auth-base = ["base64", "byteorder", "ring", "serde", "serde_derive", "serde_json", "serde_bytes"]
-android = ["jni"]
 
 [dependencies]
 sha2 = {version = "0.10" , features = ["oid"]}
@@ -54,8 +53,8 @@ ed25519-dalek = { version =  "2.1.0", features = ["rand_core", "pkcs8"], optiona
 p256 = { version = "0.13.2", optional = true }
 indexmap = { version = "2.2.6", features = ["serde"], optional = true }
 
-[target.'cfg(target_os="android")'.dependencies]
-jni = { version = "0.20", default-features = false, optional = true }
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21.1" }
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2.91" }
