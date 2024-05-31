@@ -53,7 +53,7 @@ ed25519-dalek = { version =  "2.1.0", features = ["rand_core", "pkcs8"], optiona
 p256 = { version = "0.13.2", optional = true }
 indexmap = { version = "2.2.6", features = ["serde"], optional = true }
 
-[target.'cfg(android)'.dependencies]
+[target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21.1" }
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
