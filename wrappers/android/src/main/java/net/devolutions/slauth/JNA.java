@@ -68,4 +68,16 @@ public interface JNA extends Library {
     Pointer web_request_sign(Pointer req, Pointer signing_key, String origin, long counter, Boolean user_presence);
 
     long web_request_timeout(Pointer req);
+
+    Pointer generate_credential_creation_response(String aaguid, byte[] credential_id, long credential_id_len, String request_json, String origin, byte attestation_flags);
+
+    Pointer generate_credential_request_response(byte[] credential_id, long credential_id_len, String request_json, String origin, byte attestation_flags, byte[] user_handle, long user_handle_length, String private_key);
+
+    void response_free(Pointer req);
+
+    String get_json_from_request_response(Pointer req);
+
+    String get_json_from_creation_response(Pointer req);
+
+    String get_private_key_from_response(Pointer req);
 }

@@ -16,3 +16,7 @@ Cargo.lock
 .DS_Store
 /NDK/
 android/NDK/
+.gradle
+local.properties
+wrappers/android/build
+build/

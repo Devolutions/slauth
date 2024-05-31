@@ -54,7 +54,7 @@ p256 = { version = "0.13.2", optional = true }
 indexmap = { version = "2.2.6", features = ["serde"], optional = true }
 
 [target.'cfg(android)'.dependencies]
-jni = { version = "0.20" }
+jni = { version = "0.21.1" }
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2.91" }
