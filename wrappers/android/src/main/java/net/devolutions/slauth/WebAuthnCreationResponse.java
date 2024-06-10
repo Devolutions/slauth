@@ -12,6 +12,11 @@ public class WebAuthnCreationResponse extends RustObject {
         if (this.raw == null) {
             throw new Exception();
         }
+
+        String json = this.getJson();
+        if (json == null || json.isEmpty()) {
+            throw new Exception(this.getError());
+        }
     }
 
     public String getJson() {
@@ -20,6 +25,10 @@ public class WebAuthnCreationResponse extends RustObject {
 
     public String getPrivateKey() {
         return JNA.INSTANCE.get_private_key_from_response(raw);
+    }
+
+    public String getError() {
+        return JNA.INSTANCE.get_error_from_creation_response(raw);
     }
 
     @Override

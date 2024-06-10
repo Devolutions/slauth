@@ -1,3 +1,5 @@
+package net.devolutions.slauth;
+
 public enum AttestationFlags {
     USER_PRESENT(1),
     //Reserved for future (2)

@@ -302,7 +302,7 @@ impl WebauthnAuthenticator {
 
         let auth_data_bytes = Self::generate_authenticator_data(rp_id, attestation_flags, None)?.to_vec()?;
 
-        let challenge = base64::decode(credential_request_options.challenge)?;
+        let challenge = base64::decode(credential_request_options.challenge.as_str()).or(base64::decode_config(credential_request_options.challenge, URL_SAFE_NO_PAD))?;
         let collected_client_data = CollectedClientData {
             request_type: WEBAUTHN_REQUEST_TYPE_GET.to_owned(),
             challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
