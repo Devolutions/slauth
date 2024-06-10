@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use hmac::{
     digest::{generic_array::GenericArray, FixedOutputReset, InvalidLength, OutputSizeUser},
     Mac, SimpleHmac,
@@ -71,13 +72,14 @@ impl HashesAlgorithm {
     }
 }
 
-impl ToString for HashesAlgorithm {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for HashesAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
             HashesAlgorithm::SHA1 => "SHA1".to_string(),
             HashesAlgorithm::SHA256 => "SHA256".to_string(),
             HashesAlgorithm::SHA512 => "SHA512".to_string(),
-        }
+        };
+        write!(f, "{}", str)
     }
 }
 

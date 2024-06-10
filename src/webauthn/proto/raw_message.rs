@@ -19,6 +19,7 @@ use std::{
     io::{Cursor, Read, Write},
     str::FromStr,
 };
+use std::fmt::Display;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -595,8 +596,8 @@ impl Coordinates {
     }
 }
 
-impl ToString for Coordinates {
-    fn to_string(&self) -> String {
+impl Display for Coordinates {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut key = Vec::new();
         match self {
             Coordinates::Compressed { x, y } => {
@@ -613,7 +614,7 @@ impl ToString for Coordinates {
             _ => {}
         }
 
-        base64::encode_config(&key, base64::URL_SAFE_NO_PAD)
+        write!(f, "{}", base64::encode_config(&key, base64::URL_SAFE_NO_PAD))
     }
 }
 

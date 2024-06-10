@@ -180,7 +180,7 @@ impl WebauthnAuthenticator {
     pub fn generate_attestation_object(
         alg: CoseAlgorithmIdentifier,
         aaguid: Uuid,
-        credential_id: &Vec<u8>,
+        credential_id: &[u8],
         rp_id: &str,
         attestation_flags: u8,
     ) -> Result<(AttestationObject, String, Vec<u8>), WebauthnCredentialRequestError> {
@@ -250,7 +250,7 @@ impl WebauthnAuthenticator {
         let attested_credential_data = if attestation_flags & AttestationFlags::AttestedCredentialDataIncluded as u8 != 0 {
             Some(AttestedCredentialData {
                 aaguid: aaguid.into_bytes(),
-                credential_id: credential_id.clone(),
+                credential_id: credential_id.to_owned(),
                 credential_public_key: CredentialPublicKey {
                     key_type: key_info.key_type(),
                     alg: alg.into(),
@@ -374,7 +374,7 @@ impl WebauthnAuthenticator {
                 let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
                 Ok(signing_key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
             }
-            _ => return Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+            _ => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
         }
     }
 
@@ -422,9 +422,9 @@ fn test_best_alg() {
     assert_eq!(alg, CoseAlgorithmIdentifier::Ed25519);
 
     let params2 = vec![
-        CoseAlgorithmIdentifier::ES256.into(),
-        CoseAlgorithmIdentifier::RS1.into(),
-        CoseAlgorithmIdentifier::RSA.into(),
+        CoseAlgorithmIdentifier::ES256,
+        CoseAlgorithmIdentifier::RS1,
+        CoseAlgorithmIdentifier::RSA,
     ];
 
     let alg = WebauthnAuthenticator::find_best_supported_algorithm(&params2).unwrap();

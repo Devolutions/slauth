@@ -297,9 +297,7 @@ pub mod android {
 
         match response {
             Ok(response) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from(response))),
-            Err(e) => {
-                return Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!("Error creating key: {:?}", e))));
-            }
+            Err(e) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!("Error creating key: {:?}", e))))
         }
     }
 
@@ -447,13 +445,11 @@ pub mod android {
 
         match response {
             Ok(response) => Box::into_raw(Box::new(PublicKeyCredentialAndroid::from(response))),
-            Err(e) => {
-                return Box::into_raw(Box::new(PublicKeyCredentialAndroid {
-                    id: None,
-                    response: None,
-                    error: Some(format!("Error generating response: {:?}", e)),
-                }));
-            }
+            Err(e) => Box::into_raw(Box::new(PublicKeyCredentialAndroid {
+                id: None,
+                response: None,
+                error: Some(format!("Error generating response: {:?}", e)),
+            }))
         }
     }
 

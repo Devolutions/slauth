@@ -208,7 +208,6 @@ impl Registration {
 }
 
 impl U2fSignResponse {
-    ///
     pub fn validate_signature(&self, public_key: &[u8]) -> Result<bool, Error> {
         let U2fSignResponse {
             signature_data,

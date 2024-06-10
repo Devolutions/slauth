@@ -33,7 +33,6 @@ pub struct Registration {
     pub attestation_cert: Vec<u8>,
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
@@ -43,7 +42,6 @@ pub struct RegisterRequest {
     pub challenge: String,
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisteredKey {
@@ -97,7 +95,6 @@ impl<'a> From<&'a U2fRequestType> for U2fResponseType {
     }
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct U2fRequest {
@@ -121,17 +118,14 @@ pub struct U2fRequest {
     pub data: Request,
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct U2fRegisterRequest {
-    ///
     pub register_requests: Vec<RegisterRequest>,
     /// An array of RegisteredKeys representing the U2F tokens registered to this user.
     pub registered_keys: Vec<RegisteredKey>,
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct U2fSignRequest {
@@ -141,7 +135,6 @@ pub struct U2fSignRequest {
     pub registered_keys: Vec<RegisteredKey>,
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Request {
@@ -234,7 +227,6 @@ pub struct U2fSignResponse {
     pub client_data: String,
 }
 
-///
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Response {
