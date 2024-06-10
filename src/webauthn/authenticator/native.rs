@@ -181,7 +181,10 @@ pub mod android {
     use crate::{
         strings,
         webauthn::{
-            authenticator::{responses::AuthenticatorCredentialCreationResponse, WebauthnAuthenticator},
+            authenticator::{
+                responses::{AuthenticatorCredentialCreationResponse, AuthenticatorCredentialCreationResponseAdditionalData},
+                WebauthnAuthenticator,
+            },
             proto::web_message::{
                 AuthenticatorAttestationResponse, PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRaw,
                 PublicKeyCredentialRequestOptions,
@@ -195,7 +198,6 @@ pub mod android {
         ptr::null_mut,
     };
     use uuid::Uuid;
-    use crate::webauthn::authenticator::responses::AuthenticatorCredentialCreationResponseAdditionalData;
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
     #[serde(rename_all = "camelCase")]
@@ -233,7 +235,7 @@ pub mod android {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub additional_data: Option<AuthenticatorCredentialCreationResponseAdditionalData>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub error: Option<String>
+        pub error: Option<String>,
     }
 
     impl AuthenticatorCredentialCreationResponseAndroid {
@@ -242,7 +244,7 @@ pub mod android {
                 credential_response: None,
                 private_key_response: None,
                 additional_data: None,
-                error: Some(error)
+                error: Some(error),
             }
         }
     }
@@ -253,7 +255,7 @@ pub mod android {
                 credential_response: Some(value.credential_response),
                 private_key_response: Some(value.private_key_response),
                 additional_data: Some(value.additional_data),
-                error: None
+                error: None,
             }
         }
     }
@@ -278,7 +280,10 @@ pub mod android {
             serde_json::from_str(strings::c_char_to_string(request_json).as_str());
 
         if let Err(e) = options.as_ref() {
-            return Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!("Error reading options: {:?}", e))));
+            return Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!(
+                "Error reading options: {:?}",
+                e
+            ))));
         }
 
         let origin_str = if origin.is_null() {
@@ -297,7 +302,10 @@ pub mod android {
 
         match response {
             Ok(response) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from(response))),
-            Err(e) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!("Error creating key: {:?}", e))))
+            Err(e) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!(
+                "Error creating key: {:?}",
+                e
+            )))),
         }
     }
 
@@ -348,7 +356,7 @@ pub mod android {
                     Ok(cstring) => cstring.into_raw(),
                     Err(_) => null_mut(),
                 }
-            },
+            }
 
             None => null_mut(),
         }
@@ -391,7 +399,7 @@ pub mod android {
                     Ok(cstring) => cstring.into_raw(),
                     Err(_) => null_mut(),
                 }
-            },
+            }
 
             None => null_mut(),
         }
@@ -449,7 +457,7 @@ pub mod android {
                 id: None,
                 response: None,
                 error: Some(format!("Error generating response: {:?}", e)),
-            }))
+            })),
         }
     }
 

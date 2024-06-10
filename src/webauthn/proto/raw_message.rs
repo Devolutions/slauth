@@ -16,10 +16,10 @@ use serde_cbor::{to_vec, Value};
 use serde_derive::*;
 use std::{
     collections::BTreeMap,
+    fmt::Display,
     io::{Cursor, Read, Write},
     str::FromStr,
 };
-use std::fmt::Display;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

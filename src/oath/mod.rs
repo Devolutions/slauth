@@ -1,10 +1,10 @@
-use std::fmt::Display;
 use hmac::{
     digest::{generic_array::GenericArray, FixedOutputReset, InvalidLength, OutputSizeUser},
     Mac, SimpleHmac,
 };
 use sha1::Sha1;
 use sha2::{Sha256, Sha512};
+use std::fmt::Display;
 
 pub mod hotp;
 pub mod totp;
