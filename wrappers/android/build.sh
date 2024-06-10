@@ -1,7 +1,8 @@
 #!/bin/bash
 
-$currentFolderName = basename "$PWD"
-if [[ $currentFolderName -ne slauth ]]; then
+CURRENT_FOLDER=$(basename "$PWD")
+if [ $CURRENT_FOLDER != "slauth" ];
+then
     echo "Please run this script from the root of the project"
     exit 1
 fi
