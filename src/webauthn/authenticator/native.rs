@@ -197,6 +197,8 @@ pub mod android {
         os::raw::c_char,
         ptr::null_mut,
     };
+    use std::collections::HashMap;
+    use base64::URL_SAFE_NO_PAD;
     use uuid::Uuid;
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -204,6 +206,13 @@ pub mod android {
     pub struct PublicKeyCredentialAndroid {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub raw_id: Option<String>,
+        pub client_extension_results: HashMap<String, String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub authenticator_attachment: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+        pub credential_type: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response: Option<AuthenticatorAttestationResponse>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -213,14 +222,18 @@ pub mod android {
     impl From<PublicKeyCredentialRaw> for PublicKeyCredentialAndroid {
         fn from(raw: PublicKeyCredentialRaw) -> Self {
             PublicKeyCredentialAndroid {
-                id: Some(raw.id),
+                id: Some(raw.id.clone()),
+                raw_id: Some(raw.id),
+                authenticator_attachment: Some("cross-platform".to_owned()),
+                client_extension_results: HashMap::new(),
                 response: raw.response.map(|response| AuthenticatorAttestationResponse {
-                    attestation_object: response.attestation_object.map(base64::encode),
+                    attestation_object: response.attestation_object.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
                     client_data_json: base64::encode(&response.client_data_json),
-                    authenticator_data: response.authenticator_data.map(base64::encode),
-                    signature: response.signature.map(base64::encode),
-                    user_handle: response.user_handle.map(base64::encode),
+                    authenticator_data: response.authenticator_data.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                    signature: response.signature.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                    user_handle: response.user_handle.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
                 }),
+                credential_type: Some("public-key".to_owned()),
                 error: None,
             }
         }
@@ -431,7 +444,11 @@ pub mod android {
         if let Err(e) = options.as_ref() {
             return Box::into_raw(Box::new(PublicKeyCredentialAndroid {
                 id: None,
+                raw_id: None,
+                client_extension_results: HashMap::new(),
+                authenticator_attachment: None,
                 response: None,
+                credential_type: None,
                 error: Some(format!("Error reading options: {:?}", e)),
             }));
         }
@@ -455,7 +472,11 @@ pub mod android {
             Ok(response) => Box::into_raw(Box::new(PublicKeyCredentialAndroid::from(response))),
             Err(e) => Box::into_raw(Box::new(PublicKeyCredentialAndroid {
                 id: None,
+                raw_id: None,
+                client_extension_results: HashMap::new(),
+                authenticator_attachment: None,
                 response: None,
+                credential_type: None,
                 error: Some(format!("Error generating response: {:?}", e)),
             })),
         }
