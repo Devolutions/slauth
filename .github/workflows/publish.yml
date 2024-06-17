@@ -8,40 +8,137 @@ on:
         default: false
         required: true
         type: boolean
+      rust:
+        description: Publish a rust version (crates.io)
+        default: true
+        required: true
+        type: boolean
+      android:
+        description: Publish an android version (maven)
+        default: true
+        required: true
+        type: boolean
+      wasm:
+        description: Publish a wasm version (npmjs)
+        default: true
+        required: true
+        type: boolean
 
 jobs:
-  npmjs:
+  build-wasm:
     environment: npm-publish
+    if: ${{ inputs.wasm }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: wasm
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repo
+      uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: cargo install wasm-pack
-      working-directory: wasm
+    - name: Checkout action
+      uses: actions/checkout@v4
+      with:
+        repository: Devolutions/actions
+        path: actions
+        ref: v2
+        token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
-    - name: Configure NPM
-      run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
+    - name: Setup wasm
+      run: |
+        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        wasm-pack --version
 
     - name: Build
-      run: ./build.sh
-      working-directory: wasm
+      run: sh build.sh
+      working-directory: wrappers/wasm
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm
+        path: dist/bundler
+
+    - name: Setup .npmrc config file
+      uses: ./actions/npmrc-setup
+      with:
+        github_token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
     - name: Publish
       run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
       working-directory: dist/bundler
-    
+
+    - run: rm $HOME/.npmrc
+
+    - name: Configure NPM
+      run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
+
+    - name: Publish
+      run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
+      working-directory: dist/bundler
+
     - name: Update Artifactory Cache
       run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="slauth"
       env:
         GH_TOKEN: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
-  crates-io:
+  build-android:
+    environment: cloudsmith-publish
+    if: ${{ inputs.android }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 1.8
+      uses: actions/setup-java@v4
+      with:
+        java-version: 8
+        distribution: adopt
+
+    - name: Setup Android
+      run: |
+        wget https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
+        unzip android-ndk-r23b-linux.zip
+        export ANDROID_NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r23b
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android" >> $GITHUB_ENV::LIBRARY_PATH
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android" >> $GITHUB_ENV::LD_LIBRARY_PATH
+        rustup target add aarch64-linux-android
+        rustup target add x86_64-linux-android
+        rustup target add x86_64-unknown-linux-gnu
+
+    - name: Build
+      run: |
+        cd wrappers/android
+        sh build.sh
+
+    - name: Create local.properties
+      run: |
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+    - run: chmod +x gradlew
+
+    - name: Package .aar
+      run: ./gradlew clean assembleRelease
+      env:
+        CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        CLOUDSMITH_USERNAME: bot-devolutions
+
+    - run: ./gradlew publish
+      env:
+        CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        CLOUDSMITH_USERNAME: bot-devolutions
+
+    - name: Upload .aar artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: android
+        path: wrappers/android/build/outputs/aar/slauth-release.aar
+
+  build-rust:
     environment: crates-publish
+    if: ${{ inputs.rust }}
     runs-on: ubuntu-latest
 
     steps:
