@@ -12,10 +12,19 @@ public class WebAuthnRequestResponse extends RustObject {
         if (this.raw == null) {
             throw new Exception();
         }
+
+        String json = this.getJson();
+        if (json == null || json.isEmpty()) {
+            throw new Exception(this.getError());
+        }
     }
 
     public String getJson() {
         return JNA.INSTANCE.get_json_from_request_response(raw);
+    }
+
+    public String getError() {
+        return JNA.INSTANCE.get_error_from_request_response(raw);
     }
 
     @Override

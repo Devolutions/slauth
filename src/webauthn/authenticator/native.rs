@@ -176,23 +176,102 @@ mod ios {
     }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(feature = "android")]
 pub mod android {
     use crate::{
         strings,
         webauthn::{
-            authenticator::{responses::AuthenticatorCredentialCreationResponse, WebauthnAuthenticator},
+            authenticator::{
+                responses::{AuthenticatorCredentialCreationResponse, AuthenticatorCredentialCreationResponseAdditionalData},
+                WebauthnAuthenticator,
+            },
             proto::web_message::{
-                PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRaw, PublicKeyCredentialRequestOptions,
+                AuthenticatorAttestationResponse, PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRaw,
+                PublicKeyCredentialRequestOptions,
             },
         },
     };
+    use serde_derive::{Deserialize, Serialize};
     use std::{
         ffi::{c_uchar, CString},
         os::raw::c_char,
         ptr::null_mut,
     };
+    use std::collections::HashMap;
+    use base64::URL_SAFE_NO_PAD;
     use uuid::Uuid;
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PublicKeyCredentialAndroid {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub raw_id: Option<String>,
+        pub client_extension_results: HashMap<String, String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub authenticator_attachment: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+        pub credential_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response: Option<AuthenticatorAttestationResponse>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
+    }
+
+    impl From<PublicKeyCredentialRaw> for PublicKeyCredentialAndroid {
+        fn from(raw: PublicKeyCredentialRaw) -> Self {
+            PublicKeyCredentialAndroid {
+                id: Some(raw.id.clone()),
+                raw_id: Some(raw.id),
+                authenticator_attachment: Some("cross-platform".to_owned()),
+                client_extension_results: HashMap::new(),
+                response: raw.response.map(|response| AuthenticatorAttestationResponse {
+                    attestation_object: response.attestation_object.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                    client_data_json: base64::encode(&response.client_data_json),
+                    authenticator_data: response.authenticator_data.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                    signature: response.signature.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                    user_handle: response.user_handle.map(|ad|base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                }),
+                credential_type: Some("public-key".to_owned()),
+                error: None,
+            }
+        }
+    }
+
+    #[derive(Serialize, Clone)]
+    pub struct AuthenticatorCredentialCreationResponseAndroid {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub credential_response: Option<PublicKeyCredentialRaw>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub private_key_response: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub additional_data: Option<AuthenticatorCredentialCreationResponseAdditionalData>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
+    }
+
+    impl AuthenticatorCredentialCreationResponseAndroid {
+        pub fn from_error(error: String) -> Self {
+            AuthenticatorCredentialCreationResponseAndroid {
+                credential_response: None,
+                private_key_response: None,
+                additional_data: None,
+                error: Some(error),
+            }
+        }
+    }
+
+    impl From<AuthenticatorCredentialCreationResponse> for AuthenticatorCredentialCreationResponseAndroid {
+        fn from(value: AuthenticatorCredentialCreationResponse) -> Self {
+            AuthenticatorCredentialCreationResponseAndroid {
+                credential_response: Some(value.credential_response),
+                private_key_response: Some(value.private_key_response),
+                additional_data: Some(value.additional_data),
+                error: None,
+            }
+        }
+    }
 
     #[no_mangle]
     pub unsafe extern "C" fn generate_credential_creation_response(
@@ -202,7 +281,7 @@ pub mod android {
         request_json: *const c_char,
         origin: *const c_char,
         attestation_flags: u8,
-    ) -> *mut AuthenticatorCredentialCreationResponse {
+    ) -> *mut AuthenticatorCredentialCreationResponseAndroid {
         let aaguid_str = strings::c_char_to_string(aaguid);
         let aaguid = Uuid::parse_str(aaguid_str.as_str());
         if aaguid.is_err() {
@@ -213,8 +292,11 @@ pub mod android {
         let options: Result<PublicKeyCredentialCreationOptions, serde_json::Error> =
             serde_json::from_str(strings::c_char_to_string(request_json).as_str());
 
-        if options.is_err() {
-            return null_mut();
+        if let Err(e) = options.as_ref() {
+            return Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!(
+                "Error reading options: {:?}",
+                e
+            ))));
         }
 
         let origin_str = if origin.is_null() {
@@ -231,11 +313,13 @@ pub mod android {
             attestation_flags,
         );
 
-        if response.is_err() {
-            return null_mut();
+        match response {
+            Ok(response) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from(response))),
+            Err(e) => Box::into_raw(Box::new(AuthenticatorCredentialCreationResponseAndroid::from_error(format!(
+                "Error creating key: {:?}",
+                e
+            )))),
         }
-
-        Box::into_raw(Box::new(response.expect("Checked above")))
     }
 
     #[no_mangle]
@@ -272,13 +356,36 @@ pub mod android {
     }
 
     #[no_mangle]
-    pub unsafe extern "C" fn get_json_from_request_response(res: *mut PublicKeyCredentialRaw) -> *mut c_char {
+    pub unsafe extern "C" fn get_error_from_creation_response(res: *mut AuthenticatorCredentialCreationResponseAndroid) -> *mut c_char {
         if res.is_null() {
             return null_mut();
         }
 
-        let public_key_credential = PublicKeyCredential::from((*res).clone());
-        let json = serde_json::to_string(&public_key_credential);
+        let error = (*res).error.as_ref();
+        match error {
+            Some(e) => {
+                let cstring = CString::new(e.as_str());
+                match cstring {
+                    Ok(cstring) => cstring.into_raw(),
+                    Err(_) => null_mut(),
+                }
+            }
+
+            None => null_mut(),
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn get_json_from_request_response(res: *mut PublicKeyCredentialAndroid) -> *mut c_char {
+        if res.is_null() {
+            return null_mut();
+        }
+
+        if (*res).error.is_some() {
+            return null_mut();
+        }
+
+        let json = serde_json::to_string(&(*res));
 
         if json.is_err() {
             return null_mut();
@@ -292,6 +399,26 @@ pub mod android {
     }
 
     #[no_mangle]
+    pub unsafe extern "C" fn get_error_from_request_response(res: *mut PublicKeyCredentialAndroid) -> *mut c_char {
+        if res.is_null() {
+            return null_mut();
+        }
+
+        let error = (*res).error.as_ref();
+        match error {
+            Some(e) => {
+                let cstring = CString::new(e.as_str());
+                match cstring {
+                    Ok(cstring) => cstring.into_raw(),
+                    Err(_) => null_mut(),
+                }
+            }
+
+            None => null_mut(),
+        }
+    }
+
+    #[no_mangle]
     pub unsafe extern "C" fn generate_credential_request_response(
         credential_id: *const c_uchar,
         credential_id_length: usize,
@@ -301,7 +428,7 @@ pub mod android {
         user_handle: *const c_uchar,
         user_handle_length: usize,
         private_key: *const c_char,
-    ) -> *mut PublicKeyCredentialRaw {
+    ) -> *mut PublicKeyCredentialAndroid {
         let credential_id: Vec<u8> = std::slice::from_raw_parts(credential_id, credential_id_length).into();
         let user_handle: Option<Vec<u8>> = if user_handle.is_null() {
             None
@@ -314,8 +441,16 @@ pub mod android {
 
         let private_key = strings::c_char_to_string(private_key);
 
-        if options.is_err() {
-            return null_mut();
+        if let Err(e) = options.as_ref() {
+            return Box::into_raw(Box::new(PublicKeyCredentialAndroid {
+                id: None,
+                raw_id: None,
+                client_extension_results: HashMap::new(),
+                authenticator_attachment: None,
+                response: None,
+                credential_type: None,
+                error: Some(format!("Error reading options: {:?}", e)),
+            }));
         }
 
         let origin_str = if origin.is_null() {
@@ -326,18 +461,25 @@ pub mod android {
         let options = options.expect("Checked above");
         let response = WebauthnAuthenticator::generate_credential_request_response(
             credential_id,
-            attestation_flags,
+            u8::from_be(attestation_flags),
             options,
             origin_str,
             user_handle,
             private_key,
         );
 
-        if response.is_err() {
-            return null_mut();
+        match response {
+            Ok(response) => Box::into_raw(Box::new(PublicKeyCredentialAndroid::from(response))),
+            Err(e) => Box::into_raw(Box::new(PublicKeyCredentialAndroid {
+                id: None,
+                raw_id: None,
+                client_extension_results: HashMap::new(),
+                authenticator_attachment: None,
+                response: None,
+                credential_type: None,
+                error: Some(format!("Error generating response: {:?}", e)),
+            })),
         }
-
-        Box::into_raw(Box::new(response.expect("Checked above")))
     }
 
     #[no_mangle]

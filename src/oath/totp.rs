@@ -203,7 +203,7 @@ impl OtpAuth for TOTPContext {
             "otpauth://totp/{}?secret={}&algorithm={}&digits={}&period={}",
             label.unwrap_or("slauth"),
             base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
-            self.alg.to_string(),
+            self.alg,
             self.digits,
             self.period
         );

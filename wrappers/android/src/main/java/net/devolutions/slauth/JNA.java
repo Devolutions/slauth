@@ -77,7 +77,11 @@ public interface JNA extends Library {
 
     String get_json_from_request_response(Pointer req);
 
+    String get_error_from_request_response(Pointer req);
+
     String get_json_from_creation_response(Pointer req);
+
+    String get_error_from_creation_response(Pointer req);
 
     String get_private_key_from_response(Pointer req);
 }
