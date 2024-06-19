@@ -8,13 +8,18 @@ on:
         default: false
         required: true
         type: boolean
+      android:
+        description: Publish an android version (maven)
+        default: true
+        required: true
+        type: boolean
       rust:
         description: Publish a rust version (crates.io)
         default: true
         required: true
         type: boolean
-      android:
-        description: Publish an android version (maven)
+      swift:
+        description: Publish a swift version (cocoapods)
         default: true
         required: true
         type: boolean
@@ -109,15 +114,13 @@ jobs:
         rustup target add x86_64-unknown-linux-gnu
 
     - name: Build
-      run: |
-        cd wrappers/android
-        sh build.sh
+      run: sh wrappers/android/build.sh
 
     - name: Create local.properties
-      run: |
-        echo "sdk.dir=$ANDROID_HOME" > local.properties
+      run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-    - run: chmod +x gradlew
+    - name: Allow gradlew to run
+      run: chmod +x gradlew
 
     - name: Package .aar
       run: ./gradlew clean assembleRelease
@@ -148,3 +151,63 @@ jobs:
       run: cargo publish
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  build-swift:
+    environment: cocoapods-publish
+    if: ${{ inputs.swift }}
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Setup rust
+      run: |
+        rustup target add aarch64-apple-ios
+        rustup target add x86_64-apple-ios
+        cargo install cargo-lipo
+
+    - name: Build iOS libraries
+      run: sh wrappers/swift/build.sh
+
+    - name: Setup CocoaPods Trunk Token
+      run: |
+        echo -e "machine trunk.cocoapods.org\n login bot@devolutions.net\n password ${{ secrets.COCOAPODS_TRUNK_TOKEN }}" > ~/.netrc
+        chmod 0600 ~/.netrc
+
+    - name: Setup version
+      id: version
+      run: |
+        VERSION=$(grep -E "^\s*s\.version\s*=\s*['\"][0-9]+\.[0-9]+\.[0-9]+['\"]" Slauth.podspec | awk -F"[\"\']" '{print $2}')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Push to a new branch
+      run: |
+        git checkout --orphan release/cocoapods-v${{ steps.version.outputs.version }}
+        git rm -rf .
+        git checkout master -- LICENSE wrappers/swift/classes slauth.h Slauth.podspec
+
+        git add LICENSE wrappers/swift/classes/** slauth.h Slauth.podspec
+        find target/universal/release -name "*.a" -exec git add {} \;
+        find target/x86_64-apple-ios/release -name "*.a" -exec git add {} \;
+        find target/aarch64-apple-ios/release -name "*.a" -exec git add {} \;
+
+        git commit -m "Set up CocoaPods release branch"
+        git push origin release/cocoapods-v${{ steps.version.outputs.version }}
+
+        git tag '${{ steps.version.outputs.version }}'
+        git push --tags
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Publish to CocoaPods
+      run: pod trunk push Slauth.podspec --skip-import-validation --use-libraries --allow-warnings
+      env:
+        COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+
+    - name: Delete branch
+      run: |
+        git fetch
+        git switch master
+        git branch -D release/cocoapods-v${{ steps.version.outputs.version }}
+        git push origin --delete release/cocoapods-v${{ steps.version.outputs.version }}
