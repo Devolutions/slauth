@@ -675,6 +675,7 @@ impl FromStr for Coordinates {
 #[derive(PartialEq, Debug, Default, Serialize, Deserialize, Clone, Copy)]
 pub enum CoseAlgorithmIdentifier {
     Ed25519 = -8,
+    #[serde(alias = "EC2")]
     ES256 = -7,
     RSA = -257,
     RS1 = -65535,
