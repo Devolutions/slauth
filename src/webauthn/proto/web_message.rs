@@ -94,6 +94,10 @@ pub enum AuthenticatorTransport {
     BluetoothLE,
     #[serde(rename = "internal")]
     Internal,
+    #[serde(rename = "hybrid")]
+    Hybrid,
+    #[serde(rename = "smart-card")]
+    SmartCard,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -203,6 +207,9 @@ pub enum Transport {
     Nfc,
     Ble,
     Internal,
+    Hybrid,
+    #[serde(rename = "smart-card")]
+    SmartCard,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
