@@ -180,7 +180,7 @@ impl OtpAuth for HOTPContext {
                 .ok_or_else(|| "Otpauth uri is malformed, missing parameters".to_string())
                 .and_then(|param_it| {
                     let mut secret = Vec::<u8>::new();
-                    let mut counter = std::u64::MAX;
+                    let mut counter = u64::MAX;
                     let mut alg = OTP_DEFAULT_ALG_VALUE;
                     let mut digits = OTP_DEFAULT_DIGITS_VALUE;
 
@@ -226,7 +226,7 @@ impl OtpAuth for HOTPContext {
                         }
                     }
 
-                    if secret.is_empty() || counter == std::u64::MAX {
+                    if secret.is_empty() || counter == u64::MAX {
                         return Err("Otpauth uri is malformed".to_string());
                     }
 

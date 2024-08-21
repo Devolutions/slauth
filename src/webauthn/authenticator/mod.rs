@@ -144,7 +144,11 @@ impl WebauthnAuthenticator {
         let (attestation_object, private_key_response, der) =
             Self::generate_attestation_object(alg, aaguid, &credential_id, rp_id, attestation_flags)?;
 
-        let challenge = base64::decode(credential_creation_options.challenge)?;
+        let challenge = match base64::decode(credential_creation_options.challenge.as_str()) {
+            Ok(challenge) => challenge,
+            Err(_) => base64::decode_config(credential_creation_options.challenge, URL_SAFE_NO_PAD)?,
+        };
+
         let collected_client_data = CollectedClientData {
             request_type: WEBAUTHN_REQUEST_TYPE_CREATE.to_owned(),
             challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
