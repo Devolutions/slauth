@@ -186,7 +186,7 @@ pub mod android {
                 WebauthnAuthenticator,
             },
             proto::web_message::{
-                AuthenticatorAttestationResponse, PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRaw,
+                AuthenticatorAttestationResponse, PublicKeyCredentialCreationOptions, PublicKeyCredentialRaw,
                 PublicKeyCredentialRequestOptions,
             },
         },
@@ -341,7 +341,7 @@ pub mod android {
             return null_mut();
         }
 
-        let public_key_credential = PublicKeyCredential::from((*res).credential_response.clone());
+        let public_key_credential = PublicKeyCredentialAndroid::from((*res).credential_response.clone());
         let json = serde_json::to_string(&public_key_credential);
 
         if json.is_err() {
