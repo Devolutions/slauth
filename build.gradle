@@ -26,7 +26,7 @@ properties.load(project.rootProject.file('local.properties').newDataInputStream(
 
 project('slauth') {
     ext {
-        libraryVersion = '0.7.9'
+        libraryVersion = '0.7.10'
     }
     publishing {
         repositories {
