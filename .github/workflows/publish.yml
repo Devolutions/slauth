@@ -57,7 +57,7 @@ jobs:
       working-directory: wrappers/wasm
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4.3.6
       with:
         name: wasm
         path: dist/bundler
@@ -134,7 +134,7 @@ jobs:
         CLOUDSMITH_USERNAME: bot-devolutions
 
     - name: Upload .aar artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4.3.6
       with:
         name: android
         path: wrappers/android/build/outputs/aar/slauth-release.aar
