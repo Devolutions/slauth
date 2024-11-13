@@ -24,7 +24,12 @@ on:
         required: true
         type: boolean
       wasm:
-        description: Publish a wasm version (npmjs)
+        description: Publish a wasm (bundler) version (npmjs)
+        default: true
+        required: true
+        type: boolean
+      wasm_web:
+        description: Publish a wasm (web) version (npmjs)
         default: true
         required: true
         type: boolean
@@ -38,14 +43,6 @@ jobs:
     steps:
     - name: Checkout repo
       uses: actions/checkout@v4
-
-    - name: Checkout action
-      uses: actions/checkout@v4
-      with:
-        repository: Devolutions/actions
-        path: actions
-        ref: v2
-        token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
     - name: Setup wasm
       run: |
@@ -62,17 +59,6 @@ jobs:
         name: wasm
         path: dist/bundler
 
-    - name: Setup .npmrc config file
-      uses: ./actions/npmrc-setup
-      with:
-        github_token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
-
-    - name: Publish
-      run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
-      working-directory: dist/bundler
-
-    - run: rm $HOME/.npmrc
-
     - name: Configure NPM
       run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
 
@@ -84,6 +70,42 @@ jobs:
       run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="slauth"
       env:
         GH_TOKEN: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
+
+  build-wasm-web:
+    environment: npm-publish
+    if: ${{ inputs.wasm_web }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup wasm
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
+
+      - name: Build
+        run: sh build-web.sh
+        working-directory: wrappers/wasm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.3.6
+        with:
+          name: wasm-web
+          path: dist/web
+
+      - name: Configure NPM
+        run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
+
+      - name: Publish
+        run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
+        working-directory: dist/web
+
+      - name: Update Artifactory Cache
+        run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="slauth-web"
+        env:
+          GH_TOKEN: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
   build-android:
     environment: cloudsmith-publish
