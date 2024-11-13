@@ -44,14 +44,6 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v4
 
-    - name: Checkout action
-      uses: actions/checkout@v4
-      with:
-        repository: Devolutions/actions
-        path: actions
-        ref: v2
-        token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
-
     - name: Setup wasm
       run: |
         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -87,14 +79,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Checkout action
-        uses: actions/checkout@v4
-        with:
-          repository: Devolutions/actions
-          path: actions
-          ref: v2
-          token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
       - name: Setup wasm
         run: |
