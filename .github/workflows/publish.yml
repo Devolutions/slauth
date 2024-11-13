@@ -86,7 +86,7 @@ jobs:
           wasm-pack --version
 
       - name: Build
-        run: sh build-web.sh
+        run: bash build-web.sh
         working-directory: wrappers/wasm
 
       - name: Upload artifact
