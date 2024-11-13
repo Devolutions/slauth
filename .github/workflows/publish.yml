@@ -72,8 +72,6 @@ jobs:
       with:
         github_token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
-    - run: rm $HOME/.npmrc
-
     - name: Configure NPM
       run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
 
@@ -117,8 +115,6 @@ jobs:
         uses: ./actions/npmrc-setup
         with:
           github_token: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
-
-      - run: rm $HOME/.npmrc
 
       - name: Configure NPM
         run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
