@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'Slauth'
-  s.version          = '0.7.10'
+  s.version          = '0.7.11'
   s.summary          = 'A Swift wrapper around Slauth Rust crate'
   s.description      = <<-DESC
 TODO: Add long description of the pod here.
@@ -15,5 +15,5 @@ TODO: Add long description of the pod here.
 	s.ios.deployment_target = '16.0'
 
 	s.source_files = 'wrappers/swift/classes/**/*', 'slauth.h'
-  s.vendored_libraries = 'target/universal/release/*.a', 'target/x86_64-apple-io/release/*.a', 'target/aarch64-apple-ios/release/*.a'
+  s.vendored_libraries = 'target/universal/release/*.a', 'target/x86_64-apple-ios/release/*.a', 'target/aarch64-apple-ios/release/*.a'
 end
