@@ -26,7 +26,7 @@ properties.load(project.rootProject.file('local.properties').newDataInputStream(
 
 project('slauth') {
     ext {
-        libraryVersion = '0.7.10'
+        libraryVersion = '0.7.11'
     }
     publishing {
         repositories {
@@ -46,6 +46,25 @@ project('slauth') {
                 version = project.ext.libraryVersion
                 // Tell maven to prepare the generated "*.aar" file for publishing
                 artifact("$buildDir/outputs/aar/${project.getName()}-release.aar")
+
+                pom {
+                    withXml {
+                        def dependenciesNode = asNode().appendNode("dependencies")
+                        def dependencyNode = dependenciesNode.appendNode("dependency")
+
+                        dependencyNode.appendNode("groupId", "net.java.dev.jna")
+                        dependencyNode.appendNode("artifactId", "jna")
+                        dependencyNode.appendNode("version", "5.16.0")
+                        dependencyNode.appendNode("scope", "runtime")
+                        dependencyNode.appendNode("type", "aar")
+
+                        def exclusionsNode = dependencyNode.appendNode("exclusions")
+                        def exclusionNode = exclusionsNode.appendNode("exclusion")
+
+                        exclusionNode.appendNode("groupId", "*")
+                        exclusionNode.appendNode("artifactId", "*")
+                    }
+                }
             }
         }
     }
