@@ -58,10 +58,7 @@ pub mod strings {
             CString::from_raw(cchar)
         };
         let c_str = c_string.as_c_str();
-        let r_str = match c_str.to_str() {
-            Err(_) => "",
-            Ok(string) => string,
-        };
+        let r_str = c_str.to_str().unwrap_or_default();
         r_str.to_string()
     }
 }

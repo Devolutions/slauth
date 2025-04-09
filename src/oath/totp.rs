@@ -358,7 +358,7 @@ mod native_bindings {
     #[no_mangle]
     pub unsafe extern "C" fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
         let totp = &*totp;
-        strings::string_to_c_char(totp.gen_with(elapsed.into()))
+        strings::string_to_c_char(totp.gen_with(elapsed))
     }
 
     #[no_mangle]

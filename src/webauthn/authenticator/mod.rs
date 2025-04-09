@@ -362,7 +362,9 @@ impl WebauthnAuthenticator {
         client_data_hash: &[u8],
         private_key: String,
     ) -> Result<Vec<u8>, WebauthnCredentialRequestError> {
-        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(&base64::decode(private_key)?)?;
+        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(
+            &base64::decode(private_key.as_str()).or(base64::decode_config(private_key.as_str(), URL_SAFE_NO_PAD))?,
+        )?;
 
         match private_key_response.key_alg {
             CoseAlgorithmIdentifier::Ed25519 => {

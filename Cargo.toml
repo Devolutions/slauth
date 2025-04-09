@@ -1,7 +1,10 @@
 [package]
 name = "slauth"
-version = "0.7.11"
-authors = ["richer <richer.arc@gmail.com>", "LucFauvel <luc.fauvel@hotmail.com>"]
+version = "0.7.12"
+authors = [
+    "richer <richer.arc@gmail.com>",
+    "LucFauvel <luc.fauvel@hotmail.com>",
+]
 edition = "2021"
 description = "oath HOTP and TOTP complient implementation"
 documentation = "https://docs.rs/slauth"
@@ -19,16 +22,33 @@ crate-type = ["lib", "staticlib", "cdylib"]
 default = ["u2f-server", "webauthn-server", "native-bindings"]
 native-bindings = []
 u2f-server = ["u2f", "webpki"]
-u2f = ["auth-base", "untrusted",  "serde_repr", ]
-webauthn-server = [ "webauthn", "webpki" ]
-webauthn = [ "auth-base", "bytes", "serde_cbor", "uuid", "http", "ed25519-dalek", "p256", "indexmap" ]
-auth-base = ["base64", "byteorder", "ring", "serde", "serde_derive", "serde_json", "serde_bytes"]
+u2f = ["auth-base", "untrusted", "serde_repr"]
+webauthn-server = ["webauthn", "webpki"]
+webauthn = [
+    "auth-base",
+    "bytes",
+    "serde_cbor",
+    "uuid",
+    "http",
+    "ed25519-dalek",
+    "p256",
+    "indexmap",
+]
+auth-base = [
+    "base64",
+    "byteorder",
+    "ring",
+    "serde",
+    "serde_derive",
+    "serde_json",
+    "serde_bytes",
+]
 android = ["jni"]
 
 [dependencies]
-sha2 = {version = "0.10" , features = ["oid"]}
+sha2 = { version = "0.10", features = ["oid"] }
 hmac = { version = "0.12", features = ["reset"] }
-sha-1 = {version = "0.10" , features = ["oid"]}
+sha-1 = { version = "0.10", features = ["oid"] }
 time = "0.3"
 base32 = "0.4"
 hex = "0.4"
@@ -50,7 +70,10 @@ webpki = { version = "0.22", optional = true, features = ["alloc"] }
 bytes = { version = "1.2", optional = true }
 http = { version = "1.0", optional = true }
 uuid = { version = "1.6", optional = true }
-ed25519-dalek = { version =  "2.1.0", features = ["rand_core", "pkcs8"], optional = true }
+ed25519-dalek = { version = "2.1.0", features = [
+    "rand_core",
+    "pkcs8",
+], optional = true }
 p256 = { version = "0.13.2", optional = true }
 indexmap = { version = "2.2.6", features = ["serde"], optional = true }
 
@@ -72,7 +95,9 @@ serde-wasm-bindgen = "0.6.3"
 wasm-bindgen-test = "0.3.10"
 
 [target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
-saphir = { version = "3.1.0", git = "https://github.com/richerarc/saphir.git", tag = "v3.1.0", features = ["full"] } # not released on crates.io yet, required for dependancies
+saphir = { version = "3.1.0", git = "https://github.com/richerarc/saphir.git", tag = "v3.1.0", features = [
+    "full",
+] } # not released on crates.io yet, required for dependancies
 tokio = { version = "1", features = ["full"] }
 async-stream = ">= 0.3, < 0.3.4" # 0.3.4 and up currently break saphir
 
