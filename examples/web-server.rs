@@ -1,15 +1,17 @@
 use rand::seq::IteratorRandom;
 use saphir::prelude::*;
 use serde_json::{json, Value};
-use slauth::base64::*;
-use slauth::webauthn::{
-    error::{CredentialError as CredE, Error::CredentialError},
-    proto::{
-        constants::WEBAUTHN_CHALLENGE_LENGTH,
-        raw_message::CredentialPublicKey,
-        web_message::{PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions},
+use slauth::{
+    base64::*,
+    webauthn::{
+        error::{CredentialError as CredE, Error::CredentialError},
+        proto::{
+            constants::WEBAUTHN_CHALLENGE_LENGTH,
+            raw_message::CredentialPublicKey,
+            web_message::{PublicKeyCredential, PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions},
+        },
+        server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier},
     },
-    server::{CredentialCreationBuilder, CredentialCreationVerifier, CredentialRequestBuilder, CredentialRequestVerifier},
 };
 use std::{collections::HashMap, sync::RwLock};
 

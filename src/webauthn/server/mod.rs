@@ -7,25 +7,27 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use webpki::{EndEntityCert, SignatureAlgorithm};
 
-use crate::base64::*;
-use crate::webauthn::{
-    error::{CredentialError, Error},
-    proto::{
-        constants::{
-            ECDAA_CURVE_ED25519, ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE,
-            WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
-            WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
-        },
-        raw_message::{
-            AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo,
-            CredentialPublicKey, Message,
-        },
-        tpm::TpmAlgId,
-        web_message::{
-            get_default_rp_id, AttestationConveyancePreference, AuthenticationExtensionsPRFValues, AuthenticatorSelectionCriteria,
-            CollectedClientData, Extensions, PrfExtension, PublicKeyCredential, PublicKeyCredentialCreationOptions,
-            PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, PublicKeyCredentialRequestOptions, PublicKeyCredentialRpEntity,
-            PublicKeyCredentialType, PublicKeyCredentialUserEntity, UserVerificationRequirement,
+use crate::{
+    base64::*,
+    webauthn::{
+        error::{CredentialError, Error},
+        proto::{
+            constants::{
+                ECDAA_CURVE_ED25519, ECDSA_CURVE_P256, ECDSA_CURVE_P384, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_REQUEST_TYPE_CREATE,
+                WEBAUTHN_REQUEST_TYPE_GET, WEBAUTHN_USER_PRESENT_FLAG, WEBAUTHN_USER_VERIFIED_FLAG, WEBAUTH_PUBLIC_KEY_TYPE_EC2,
+                WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+            },
+            raw_message::{
+                AttestationObject, AttestationStatement, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier, CoseKeyInfo,
+                CredentialPublicKey, Message,
+            },
+            tpm::TpmAlgId,
+            web_message::{
+                get_default_rp_id, AttestationConveyancePreference, AuthenticationExtensionsPRFValues, AuthenticatorSelectionCriteria,
+                CollectedClientData, Extensions, PrfExtension, PublicKeyCredential, PublicKeyCredentialCreationOptions,
+                PublicKeyCredentialDescriptor, PublicKeyCredentialParameters, PublicKeyCredentialRequestOptions,
+                PublicKeyCredentialRpEntity, PublicKeyCredentialType, PublicKeyCredentialUserEntity, UserVerificationRequirement,
+            },
         },
     },
 };

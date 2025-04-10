@@ -4,14 +4,16 @@ use ring::signature;
 use sha2::{Digest, Sha256};
 use webpki::{EndEntityCert, ECDSA_P256_SHA256};
 
-use crate::base64::*;
-use crate::u2f::{
-    error::Error,
-    proto::{
-        constants::U2F_V2_VERSION_STR,
-        raw_message,
-        raw_message::{apdu::ApduFrame, Message},
-        web_message::*,
+use crate::{
+    base64::*,
+    u2f::{
+        error::Error,
+        proto::{
+            constants::U2F_V2_VERSION_STR,
+            raw_message,
+            raw_message::{apdu::ApduFrame, Message},
+            web_message::*,
+        },
     },
 };
 

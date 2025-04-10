@@ -9,20 +9,22 @@ pub struct SigningKey {
 pub mod client {
     use sha2::{Digest, Sha256};
 
-    use crate::base64::*;
-    use crate::u2f::{
-        client::{token, SigningKey},
-        error::Error,
-        proto::{
-            constants::{MAX_RESPONSE_LEN_EXTENDED, U2F_AUTHENTICATE, U2F_AUTH_DONT_ENFORCE, U2F_REGISTER, U2F_V2_VERSION_STR},
-            raw_message::{
-                self,
-                apdu::{ApduFrame, Request as RawRequest},
-                Message as RawMessageTrait,
-            },
-            web_message::{
-                ClientData, ClientDataType, ClientError, Request, Response, U2fRegisterResponse, U2fRequest, U2fRequestType,
-                U2fResponse as WebResponse, U2fResponseType, U2fSignResponse,
+    use crate::{
+        base64::*,
+        u2f::{
+            client::{token, SigningKey},
+            error::Error,
+            proto::{
+                constants::{MAX_RESPONSE_LEN_EXTENDED, U2F_AUTHENTICATE, U2F_AUTH_DONT_ENFORCE, U2F_REGISTER, U2F_V2_VERSION_STR},
+                raw_message::{
+                    self,
+                    apdu::{ApduFrame, Request as RawRequest},
+                    Message as RawMessageTrait,
+                },
+                web_message::{
+                    ClientData, ClientDataType, ClientError, Request, Response, U2fRegisterResponse, U2fRequest, U2fRequestType,
+                    U2fResponse as WebResponse, U2fResponseType, U2fSignResponse,
+                },
             },
         },
     };
