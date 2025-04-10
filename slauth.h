@@ -305,3 +305,7 @@ struct AuthenticatorRequestResponse *generate_credential_request_response(const 
 struct Buffer get_auth_data_from_response(struct AuthenticatorRequestResponse *res);
 
 struct Buffer get_signature_from_response(struct AuthenticatorRequestResponse *res);
+
+char *get_error_message(struct AuthenticatorRequestResponse *res);
+
+bool is_success(struct AuthenticatorRequestResponse *res);
