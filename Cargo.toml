@@ -53,7 +53,7 @@ time = "0.3"
 base32 = "0.5"
 hex = "0.4"
 rsa = "0.9.8"
-rand_core = "0.6.0"
+rand_core = "0.6.4"
 x509-parser = "0.17.0"
 
 base64 = { version = "0.22", optional = true }
