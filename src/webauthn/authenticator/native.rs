@@ -22,6 +22,8 @@ mod ios {
     pub struct AuthenticatorRequestResponse {
         pub auth_data_bytes: Vec<u8>,
         pub signature: Vec<u8>,
+        pub success: bool,
+        pub error_message: String,
     }
 
     #[repr(C)]
@@ -129,25 +131,42 @@ mod ios {
 
         let auth_data = WebauthnAuthenticator::generate_authenticator_data(rp_id_str.as_str(), u8::from_be(attestation_flags), None);
 
-        if auth_data.is_err() {
-            return null_mut();
+        if let Err(e) = auth_data {
+            return Box::into_raw(Box::new(AuthenticatorRequestResponse {
+                auth_data_bytes: Vec::new(),
+                signature: Vec::new(),
+                success: false,
+                error_message: format!("Error generating auth data: {e:?}"),
+            }));
         }
 
         let auth_data_bytes = auth_data.expect("Checked above").to_vec();
-        if auth_data_bytes.is_err() {
-            return null_mut();
+        if let Err(e) = auth_data_bytes {
+            return Box::into_raw(Box::new(AuthenticatorRequestResponse {
+                auth_data_bytes: Vec::new(),
+                signature: Vec::new(),
+                success: false,
+                error_message: format!("Error converting auth data to bytes: {e:?}"),
+            }));
         }
         let auth_data_bytes = auth_data_bytes.expect("Checked above");
 
         let signature = WebauthnAuthenticator::generate_signature(auth_data_bytes.as_slice(), client_data_hash.as_slice(), private_key);
 
-        if signature.is_err() {
-            return null_mut();
+        if let Err(e) = signature {
+            return Box::into_raw(Box::new(AuthenticatorRequestResponse {
+                auth_data_bytes: Vec::new(),
+                signature: Vec::new(),
+                success: false,
+                error_message: format!("Error signing data: {e:?}"),
+            }));
         }
 
         Box::into_raw(Box::new(AuthenticatorRequestResponse {
             auth_data_bytes,
             signature: signature.expect("Checked above"),
+            success: true,
+            error_message: String::new(),
         }))
     }
 
@@ -160,6 +179,28 @@ mod ios {
         Buffer {
             data: (*res).auth_data_bytes.as_mut_ptr(),
             len: (*res).auth_data_bytes.len(),
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn is_success(res: *mut AuthenticatorRequestResponse) -> bool {
+        if res.is_null() {
+            return false;
+        }
+
+        (*res).success
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn get_error_message(res: *mut AuthenticatorRequestResponse) -> *mut c_char {
+        if res.is_null() {
+            return null_mut();
+        }
+
+        let cstring = CString::new((*res).error_message.clone());
+        match cstring {
+            Ok(cstring) => cstring.into_raw(),
+            Err(_) => null_mut(),
         }
     }
 
