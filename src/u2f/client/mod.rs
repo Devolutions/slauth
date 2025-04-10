@@ -9,6 +9,7 @@ pub struct SigningKey {
 pub mod client {
     use sha2::{Digest, Sha256};
 
+    use crate::base64::*;
     use crate::u2f::{
         client::{token, SigningKey},
         error::Error,
@@ -90,8 +91,8 @@ pub mod client {
                     Ok((
                         Response::Register(U2fRegisterResponse {
                             version: U2F_V2_VERSION_STR.to_string(),
-                            client_data: base64::encode_config(&client_data_str, base64::URL_SAFE_NO_PAD),
-                            registration_data: base64::encode_config(&raw_rsp_byte, base64::URL_SAFE_NO_PAD),
+                            client_data: BASE64_URLSAFE_NOPAD.encode(&client_data_str),
+                            registration_data: BASE64_URLSAFE_NOPAD.encode(&raw_rsp_byte),
                         }),
                         signing_key,
                     ))
@@ -156,8 +157,8 @@ pub mod client {
 
                     Ok(Response::Sign(U2fSignResponse {
                         key_handle: signing_key.key_handle.clone(),
-                        signature_data: base64::encode_config(&raw_rsp_byte, base64::URL_SAFE_NO_PAD),
-                        client_data: base64::encode_config(&client_data_str, base64::URL_SAFE_NO_PAD),
+                        signature_data: BASE64_URLSAFE_NOPAD.encode(&raw_rsp_byte),
+                        client_data: BASE64_URLSAFE_NOPAD.encode(&client_data_str),
                     }))
                 }
             }
@@ -382,11 +383,7 @@ pub mod client {
         pub unsafe extern "C" fn signing_key_to_string(s: *mut SigningKey) -> *mut c_char {
             let SigningKey { key_handle, private_key } = &*s;
 
-            strings::string_to_c_char(format!(
-                "{}.{}",
-                key_handle,
-                base64::encode_config(private_key, base64::URL_SAFE_NO_PAD)
-            ))
+            strings::string_to_c_char(format!("{}.{}", key_handle, BASE64_URLSAFE_NOPAD.encode(private_key)))
         }
 
         #[no_mangle]
@@ -402,11 +399,7 @@ pub mod client {
                     let mut parts = s.split('.');
                     let l = parts.next().and_then(|key_handle| parts.next().map(|b64| (key_handle, b64)));
 
-                    l.and_then(|(k, b64)| {
-                        base64::decode_config(b64, base64::URL_SAFE_NO_PAD)
-                            .ok()
-                            .map(|b64_v| (k.to_string(), b64_v))
-                    })
+                    l.and_then(|(k, b64)| BASE64_URLSAFE_NOPAD.decode(b64).ok().map(|b64_v| (k.to_string(), b64_v)))
                 })
                 .map(|(key_handle, key)| {
                     Box::into_raw(Box::new(SigningKey {

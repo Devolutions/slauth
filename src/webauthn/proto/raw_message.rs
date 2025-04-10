@@ -1,12 +1,15 @@
-use crate::webauthn::{
-    error::Error,
-    proto::{
-        constants::{
-            ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
-            WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED, WEBAUTHN_FORMAT_TPM,
-            WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+use crate::{
+    base64::*,
+    webauthn::{
+        error::Error,
+        proto::{
+            constants::{
+                ECDSA_Y_PREFIX_NEGATIVE, ECDSA_Y_PREFIX_POSITIVE, ECDSA_Y_PREFIX_UNCOMPRESSED, WEBAUTHN_FORMAT_ANDROID_KEY,
+                WEBAUTHN_FORMAT_ANDROID_SAFETYNET, WEBAUTHN_FORMAT_FIDO_U2F, WEBAUTHN_FORMAT_NONE, WEBAUTHN_FORMAT_PACKED,
+                WEBAUTHN_FORMAT_TPM, WEBAUTH_PUBLIC_KEY_TYPE_EC2, WEBAUTH_PUBLIC_KEY_TYPE_OKP, WEBAUTH_PUBLIC_KEY_TYPE_RSA,
+            },
+            tpm::TPM,
         },
-        tpm::TPM,
     },
 };
 use byteorder::{BigEndian, ReadBytesExt};
@@ -491,7 +494,7 @@ impl Message for AttestationObject {
     where
         Self: Sized,
     {
-        let raw_values = base64::decode(string)?;
+        let raw_values = BASE64.decode(string)?;
         Self::from_bytes(raw_values.as_slice())
     }
 
@@ -563,7 +566,7 @@ impl Message for AttestationObject {
     where
         Self: Sized,
     {
-        Ok(base64::encode(Self::to_bytes(self)?))
+        Ok(BASE64.encode(Self::to_bytes(self)?))
     }
 }
 
@@ -614,7 +617,7 @@ impl Display for Coordinates {
             _ => {}
         }
 
-        write!(f, "{}", base64::encode_config(&key, base64::URL_SAFE_NO_PAD))
+        write!(f, "{}", BASE64_URLSAFE_NOPAD.encode(&key))
     }
 }
 
@@ -622,7 +625,7 @@ impl FromStr for Coordinates {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let key = base64::decode_config(s, base64::URL_SAFE_NO_PAD).map_err(Error::Base64Error)?;
+        let key = BASE64_URLSAFE_NOPAD.decode(s).map_err(Error::Base64Error)?;
 
         match key[0] {
             ECDSA_Y_PREFIX_UNCOMPRESSED => {

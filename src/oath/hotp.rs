@@ -139,7 +139,7 @@ impl OtpAuth for HOTPContext {
         let mut uri = format!(
             "otpauth://hotp/{}?secret={}&algorithm={}&digits={}&counter={}",
             label.unwrap_or("slauth"),
-            base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
+            base32::encode(base32::Alphabet::Rfc4648 { padding: false }, self.secret.as_slice()),
             self.alg,
             self.digits,
             self.counter

@@ -1,6 +1,9 @@
+use base64::Engine;
 use http::Uri;
 use serde_derive::*;
 use std::collections::HashMap;
+
+use crate::base64::BASE64;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename = "publicKey", rename_all = "camelCase")]
@@ -158,11 +161,11 @@ impl From<PublicKeyCredentialRaw> for PublicKeyCredential {
         PublicKeyCredential {
             id: raw.id,
             response: raw.response.map(|response| AuthenticatorAttestationResponse {
-                attestation_object: response.attestation_object.map(base64::encode),
-                client_data_json: base64::encode(&response.client_data_json),
-                authenticator_data: response.authenticator_data.map(base64::encode),
-                signature: response.signature.map(base64::encode),
-                user_handle: response.user_handle.map(base64::encode),
+                attestation_object: response.attestation_object.map(|ao| BASE64.encode(ao)),
+                client_data_json: BASE64.encode(&response.client_data_json),
+                authenticator_data: response.authenticator_data.map(|ad| BASE64.encode(ad)),
+                signature: response.signature.map(|s| BASE64.encode(s)),
+                user_handle: response.user_handle.map(|uh| BASE64.encode(uh)),
             }),
         }
     }

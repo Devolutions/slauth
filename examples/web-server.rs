@@ -1,6 +1,7 @@
 use rand::seq::IteratorRandom;
 use saphir::prelude::*;
 use serde_json::{json, Value};
+use slauth::base64::*;
 use slauth::webauthn::{
     error::{CredentialError as CredE, Error::CredentialError},
     proto::{
@@ -53,7 +54,7 @@ impl Responder for TestError {
 impl TestController {
     #[get("/register")]
     async fn register_request(&self) -> Result<Json<Value>, TestError> {
-        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
+        let uuid = BASE64.encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         let builder = CredentialCreationBuilder::new()
             .challenge(gen_challenge(WEBAUTHN_CHALLENGE_LENGTH))
             .user(uuid.clone(), "lfauvel@devolutions.net".to_string(), "Luc Fauvel".to_string(), None)
@@ -77,7 +78,7 @@ impl TestController {
     #[post("/register")]
     async fn complete_register(&self, cred: Json<PublicKeyCredential>) -> Result<(), TestError> {
         let cred = cred.into_inner();
-        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
+        let uuid = BASE64.encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         if let Some(context) = self.reg_contexts.read().expect("should be ok").get(&uuid) {
             let mut verifier = CredentialCreationVerifier::new(cred.clone(), context.clone(), "http://localhost");
             if let Ok(result) = verifier.verify() {
@@ -93,7 +94,7 @@ impl TestController {
         let mut builder = CredentialRequestBuilder::new()
             .rp("localhost".to_string())
             .challenge(gen_challenge(WEBAUTHN_CHALLENGE_LENGTH));
-        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
+        let uuid = BASE64.encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
         for (cred, _) in self.creds.read().unwrap().iter() {
             builder = builder.allow_credential(cred.clone());
         }
@@ -112,7 +113,7 @@ impl TestController {
     #[post("/sign")]
     async fn complete_sign(&self, req: Json<PublicKeyCredential>) -> Result<(u16, String), TestError> {
         let cred = req.into_inner();
-        let uuid = base64::encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
+        let uuid = BASE64.encode("e1aea4d6-d2ee-4218-9f1c-5ccddadaa1a7");
 
         let ctx_lock = self
             .sign_contexts
@@ -209,9 +210,9 @@ async fn main() -> Result<(), SaphirError> {
 pub fn gen_challenge(len: usize) -> String {
     let charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let value = (0..len)
         .map(|_| charset.chars().choose(&mut rng).unwrap() as u8)
         .collect::<Vec<u8>>();
-    base64::encode_config(value.as_slice(), base64::URL_SAFE_NO_PAD)
+    BASE64_URLSAFE_NOPAD.encode(value.as_slice())
 }

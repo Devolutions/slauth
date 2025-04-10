@@ -7,6 +7,7 @@ pub mod server;
 
 #[test]
 fn test() {
+    use crate::base64::*;
     use crate::u2f::proto::web_message::{Response, U2fRequest};
     use server::*;
     const ATT_PKEY: &str = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgzgUSoDttmryF0C+ck4GppKwssha7ngah0dfezfTBzDOhRANCAATXk8CelRQjNuArEPpEW40yOOX9wPTq8pEG2XRf8KI3NzeKBOHWpxzTRAgKABBTF28dKf4NpJGSL+Qj04nyWQ8a";
@@ -29,8 +30,8 @@ fn test() {
     let (rsp, signing_key) = web_req
         .register(
             origin.to_string(),
-            base64::decode(ATT_CERT).unwrap().as_slice(),
-            base64::decode(ATT_PKEY).unwrap().as_slice(),
+            BASE64.decode(ATT_CERT).unwrap().as_slice(),
+            BASE64.decode(ATT_PKEY).unwrap().as_slice(),
         )
         .expect("Unable to register");
 

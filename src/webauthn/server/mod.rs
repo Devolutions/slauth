@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use webpki::{EndEntityCert, SignatureAlgorithm};
 
+use crate::base64::*;
 use crate::webauthn::{
     error::{CredentialError, Error},
     proto::{
@@ -201,7 +202,7 @@ impl CredentialCreationVerifier {
             .as_ref()
             .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
-        let client_data_json = base64::decode(&response.client_data_json)?;
+        let client_data_json = BASE64.decode(&response.client_data_json)?;
         let client_data = serde_json::from_slice::<CollectedClientData>(client_data_json.as_slice())?;
 
         let raw_attestation = response
@@ -432,7 +433,7 @@ impl CredentialRequestBuilder {
 
     pub fn prf_credential<T: Into<Option<Vec<u8>>>>(mut self, credential_id: Vec<u8>, first: Vec<u8>, second: T) -> Self {
         if let Some(prf) = self.prf.as_mut() {
-            let encoded_credential_id = base64::encode_config(credential_id, base64::URL_SAFE_NO_PAD);
+            let encoded_credential_id = BASE64_URLSAFE_NOPAD.encode(credential_id);
             prf.eval_by_credential.insert(
                 encoded_credential_id,
                 AuthenticationExtensionsPRFValues {
@@ -464,7 +465,7 @@ impl CredentialRequestBuilder {
         let prf = self.prf.as_mut().expect("initialized above");
 
         for (credential_id, first, second) in credentials {
-            let encoded_credential_id = base64::encode_config(&credential_id, base64::URL_SAFE_NO_PAD);
+            let encoded_credential_id = BASE64_URLSAFE_NOPAD.encode(&credential_id);
             prf.eval_by_credential
                 .insert(encoded_credential_id, AuthenticationExtensionsPRFValues { first, second });
         }
@@ -539,17 +540,17 @@ impl CredentialRequestVerifier {
             .as_ref()
             .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?;
 
-        let signature = base64::decode(
+        let signature = BASE64.decode(
             response
                 .signature
                 .as_ref()
                 .ok_or_else(|| Error::Other("Client data must be present for verification".to_string()))?,
         )?;
 
-        let client_data_json = base64::decode(&response.client_data_json)?;
+        let client_data_json = BASE64.decode(&response.client_data_json)?;
         let client_data = serde_json::from_slice::<CollectedClientData>(client_data_json.as_slice())?;
 
-        let raw_auth_data = base64::decode(
+        let raw_auth_data = BASE64.decode(
             response
                 .authenticator_data
                 .as_ref()
@@ -570,7 +571,7 @@ impl CredentialRequestVerifier {
             ))));
         }
 
-        if let Some(Ok(user_handle)) = response.user_handle.as_ref().map(base64::decode) {
+        if let Some(Ok(user_handle)) = response.user_handle.as_ref().map(|uh| BASE64.decode(uh)) {
             if user_handle != self.user_handle {
                 return Err(Error::CredentialError(CredentialError::Other(String::from(
                     "User handles do not match",

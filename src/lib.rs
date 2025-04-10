@@ -18,6 +18,8 @@ pub mod webauthn;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
+pub mod base64;
+
 #[cfg(feature = "native-bindings")]
 pub mod strings {
     use std::{

@@ -4,6 +4,7 @@ use ring::signature;
 use sha2::{Digest, Sha256};
 use webpki::{EndEntityCert, ECDSA_P256_SHA256};
 
+use crate::base64::*;
 use crate::u2f::{
     error::Error,
     proto::{
@@ -49,7 +50,7 @@ impl U2fRequestBuilder {
     }
 
     pub fn challenge(mut self, challenge: String) -> Self {
-        self.challenge = Some(base64::encode(challenge));
+        self.challenge = Some(BASE64.encode(challenge));
         self
     }
 
@@ -72,11 +73,10 @@ impl U2fRequestBuilder {
             registered_keys,
         } = self;
 
-        let challenge = base64::encode_config(
+        let challenge = BASE64_URLSAFE_NOPAD.encode(
             challenge
                 .as_ref()
                 .ok_or_else(|| Error::Other("Unable to build a U2F request without a challenge".to_string()))?,
-            base64::URL_SAFE_NO_PAD,
         );
 
         let data = match rtype {
@@ -151,13 +151,15 @@ impl U2fRegisterResponse {
         }
 
         // Validate that input is consistent with what's expected
-        let registration_data_bytes =
-            base64::decode_config(registration_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let registration_data_bytes = BASE64_URLSAFE_NOPAD
+            .decode(registration_data)
+            .map_err(|e| Error::Registration(e.to_string()))?;
         let raw_rsp = raw_message::apdu::Response::read_from(&registration_data_bytes)?;
         let raw_u2f_reg = raw_message::RegisterResponse::from_apdu(raw_rsp)?;
 
-        let client_data_bytes =
-            base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let client_data_bytes = BASE64_URLSAFE_NOPAD
+            .decode(client_data)
+            .map_err(|e| Error::Registration(e.to_string()))?;
 
         let client_data: ClientData =
             serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;
@@ -215,13 +217,15 @@ impl U2fSignResponse {
             ..
         } = &self;
 
-        let signature_data_byte =
-            base64::decode_config(signature_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let signature_data_byte = BASE64_URLSAFE_NOPAD
+            .decode(signature_data)
+            .map_err(|e| Error::Registration(e.to_string()))?;
         let raw_rsp = raw_message::apdu::Response::read_from(&signature_data_byte)?;
         let raw_u2f_sign = raw_message::AuthenticateResponse::from_apdu(raw_rsp)?;
 
-        let client_data_bytes =
-            base64::decode_config(client_data, base64::URL_SAFE_NO_PAD).map_err(|e| Error::Registration(e.to_string()))?;
+        let client_data_bytes = BASE64_URLSAFE_NOPAD
+            .decode(client_data)
+            .map_err(|e| Error::Registration(e.to_string()))?;
 
         let client_data: ClientData =
             serde_json::from_slice(client_data_bytes.as_slice()).map_err(|e| Error::Registration(e.to_string()))?;

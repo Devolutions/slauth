@@ -50,15 +50,15 @@ sha2 = { version = "0.10", features = ["oid"] }
 hmac = { version = "0.12", features = ["reset"] }
 sha-1 = { version = "0.10", features = ["oid"] }
 time = "0.3"
-base32 = "0.4"
+base32 = "0.5"
 hex = "0.4"
-rsa = "0.9.2"
-rand = "0.8.5"
-x509-parser = "0.15.0"
+rsa = "0.9.8"
+rand_core = "0.6.0"
+x509-parser = "0.17.0"
 
-base64 = { version = "0.13", optional = true }
-byteorder = { version = "1.4", optional = true }
-ring = { version = "0.16", optional = true }
+base64 = { version = "0.22", optional = true }
+byteorder = { version = "1.5", optional = true }
+ring = { version = "0.17", optional = true }
 untrusted = { version = "0.9.0", optional = true }
 serde = { version = "1.0", optional = true }
 serde_repr = { version = "0.1", optional = true }
@@ -67,32 +67,32 @@ serde_bytes = { version = "0.11", optional = true }
 serde_json = { version = "1.0", optional = true }
 serde_cbor = { version = "0.11", optional = true }
 webpki = { version = "0.22", optional = true, features = ["alloc"] }
-bytes = { version = "1.2", optional = true }
-http = { version = "1.0", optional = true }
-uuid = { version = "1.6", optional = true }
-ed25519-dalek = { version = "2.1.0", features = [
+bytes = { version = "1.10", optional = true }
+http = { version = "1.3", optional = true }
+uuid = { version = "1.16", optional = true }
+ed25519-dalek = { version = "2.1.1", features = [
     "rand_core",
     "pkcs8",
 ], optional = true }
 p256 = { version = "0.13.2", optional = true }
-indexmap = { version = "2.2.6", features = ["serde"], optional = true }
+indexmap = { version = "2.9.0", features = ["serde"], optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21.1", optional = true }
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
-wasm-bindgen = { version = "0.2.91" }
-js-sys = "0.3.37"
+wasm-bindgen = { version = "0.2.100" }
+js-sys = "0.3.77"
 # FIXME: https://docs.rs/getrandom/0.2.2/getrandom/#webassembly-support
 # let `getrandom` know that JavaScript is available for our targets
 # `getrandom` is not used directly, but by adding the right feature here
 # it will be compiled with it in our dependencies as well (since union of
 # all the features selected is used when building a Cargo project)
 getrandom = { version = "0.2", features = ["js"] }
-serde-wasm-bindgen = "0.6.3"
+serde-wasm-bindgen = "0.6.5"
 
 [target.'cfg(target_arch="wasm32")'.dev-dependencies]
-wasm-bindgen-test = "0.3.10"
+wasm-bindgen-test = "0.3.50"
 
 [target.'cfg(not(target_arch="wasm32"))'.dev-dependencies]
 saphir = { version = "3.1.0", git = "https://github.com/richerarc/saphir.git", tag = "v3.1.0", features = [
@@ -104,9 +104,9 @@ async-stream = ">= 0.3, < 0.3.4" # 0.3.4 and up currently break saphir
 [dev-dependencies]
 serde_json = "1.0"
 serde_cbor = "0.11"
-uuid = "1.2"
-rand = "0.8"
-bytes = "1.2"
+uuid = "1.16"
+rand = "0.9"
+bytes = "1.10"
 
 #[package.metadata.wasm-pack.profile.release]
 #wasm-opt = false
