@@ -22,6 +22,7 @@ use p256::ecdsa::VerifyingKey;
 use rand::rngs::OsRng;
 use rsa::{
     pkcs1::{DecodeRsaPrivateKey, EncodeRsaPrivateKey},
+    pkcs8::DecodePrivateKey,
     signature::SignatureEncoding,
     traits::PublicKeyParts,
 };
@@ -61,6 +62,7 @@ pub enum WebauthnCredentialRequestError {
     Base64Error(base64::DecodeError),
     Ed25519Error(ed25519_dalek::SignatureError),
     Ed25519SPKIError(ed25519_dalek::pkcs8::spki::Error),
+    Ed25519PKCS8Error(ed25519_dalek::pkcs8::Error),
 }
 
 impl From<serde_json::Error> for WebauthnCredentialRequestError {
@@ -102,6 +104,12 @@ impl From<SignatureError> for WebauthnCredentialRequestError {
 impl From<ed25519_dalek::pkcs8::spki::Error> for WebauthnCredentialRequestError {
     fn from(e: ed25519_dalek::pkcs8::spki::Error) -> Self {
         WebauthnCredentialRequestError::Ed25519SPKIError(e)
+    }
+}
+
+impl From<ed25519_dalek::pkcs8::Error> for WebauthnCredentialRequestError {
+    fn from(e: ed25519_dalek::pkcs8::Error) -> Self {
+        WebauthnCredentialRequestError::Ed25519PKCS8Error(e)
     }
 }
 
@@ -368,16 +376,20 @@ impl WebauthnAuthenticator {
 
         match private_key_response.key_alg {
             CoseAlgorithmIdentifier::Ed25519 => {
-                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice()).or(
+                    ed25519_dalek::SigningKey::from_pkcs8_der(private_key_response.private_key.as_slice()),
+                )?;
                 Ok(key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
             }
             CoseAlgorithmIdentifier::ES256 => {
-                let key = p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice())?;
+                let key = p256::ecdsa::SigningKey::from_pkcs8_der(private_key_response.private_key.as_slice())
+                    .or(p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice()))?;
                 let (sig, _) = key.sign([auth_data_bytes, client_data_hash].concat().as_slice());
                 Ok(sig.to_der().to_vec())
             }
             CoseAlgorithmIdentifier::RSA => {
-                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)?;
+                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)
+                    .or(rsa::RsaPrivateKey::from_pkcs8_der(&private_key_response.private_key))?;
                 let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
                 Ok(signing_key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
             }
