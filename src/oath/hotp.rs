@@ -174,7 +174,7 @@ impl OtpAuth for HOTPContext {
 
             let param_it_opt = type_label_it
                 .next()
-                .and_then(|label_param| label_param.split('?').last().map(|s| s.split('&')));
+                .and_then(|label_param| label_param.split('?').next_back().map(|s| s.split('&')));
 
             param_it_opt
                 .ok_or_else(|| "Otpauth uri is malformed, missing parameters".to_string())
