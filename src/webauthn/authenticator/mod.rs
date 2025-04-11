@@ -3,23 +3,25 @@ pub(crate) mod responses;
 #[cfg(feature = "native-bindings")]
 pub(crate) mod native;
 
-use crate::webauthn::{
-    authenticator::responses::AuthenticatorCredentialCreationResponse,
-    error::Error,
-    proto::{
-        constants::{ECDAA_CURVE_ED25519, ECDSA_CURVE_P256, WEBAUTHN_FORMAT_NONE, WEBAUTHN_REQUEST_TYPE_CREATE},
-        raw_message::{
-            AttestationFlags, AttestationObject, AttestedCredentialData, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier,
-            CoseKeyInfo, CredentialPublicKey, Message, Rsa, EC2, OKP,
+use crate::{
+    base64::*,
+    webauthn::{
+        authenticator::responses::AuthenticatorCredentialCreationResponse,
+        error::Error,
+        proto::{
+            constants::{ECDAA_CURVE_ED25519, ECDSA_CURVE_P256, WEBAUTHN_FORMAT_NONE, WEBAUTHN_REQUEST_TYPE_CREATE},
+            raw_message::{
+                AttestationFlags, AttestationObject, AttestedCredentialData, AuthenticatorData, Coordinates, CoseAlgorithmIdentifier,
+                CoseKeyInfo, CredentialPublicKey, Message, Rsa, EC2, OKP,
+            },
+            web_message::{CollectedClientData, PublicKeyCredentialCreationOptions, UserVerificationRequirement},
         },
-        web_message::{CollectedClientData, PublicKeyCredentialCreationOptions, UserVerificationRequirement},
     },
 };
-use base64::URL_SAFE_NO_PAD;
 use ed25519_dalek::{pkcs8::EncodePublicKey, SignatureError, Signer};
 use hmac::digest::Digest;
 use p256::ecdsa::VerifyingKey;
-use rand::rngs::OsRng;
+use rand_core::OsRng;
 use rsa::{
     pkcs1::{DecodeRsaPrivateKey, EncodeRsaPrivateKey},
     pkcs8::DecodePrivateKey,
@@ -152,14 +154,14 @@ impl WebauthnAuthenticator {
         let (attestation_object, private_key_response, der) =
             Self::generate_attestation_object(alg, aaguid, &credential_id, rp_id, attestation_flags)?;
 
-        let challenge = match base64::decode(credential_creation_options.challenge.as_str()) {
+        let challenge = match BASE64.decode(credential_creation_options.challenge.as_str()) {
             Ok(challenge) => challenge,
-            Err(_) => base64::decode_config(credential_creation_options.challenge, URL_SAFE_NO_PAD)?,
+            Err(_) => BASE64_URLSAFE_NOPAD.decode(credential_creation_options.challenge)?,
         };
 
         let collected_client_data = CollectedClientData {
             request_type: WEBAUTHN_REQUEST_TYPE_CREATE.to_owned(),
-            challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
+            challenge: BASE64_URLSAFE_NOPAD.encode(challenge),
             origin: origin.as_ref().unwrap_or(rp_id).clone(),
             cross_origin: false,
             token_binding: None,
@@ -167,7 +169,7 @@ impl WebauthnAuthenticator {
 
         let auth_data = attestation_object.auth_data.clone();
         let credential = PublicKeyCredentialRaw {
-            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
+            id: BASE64_URLSAFE_NOPAD.encode(credential_id.clone()),
             raw_id: credential_id,
             response: Some(AuthenticatorAttestationResponseRaw {
                 attestation_object: Some(attestation_object.to_bytes()?),
@@ -212,7 +214,7 @@ impl WebauthnAuthenticator {
                             x: bytes,
                         },
                     }),
-                    base64::encode(serde_cbor::to_vec(&private_key)?),
+                    BASE64.encode(serde_cbor::to_vec(&private_key)?),
                     keypair.verifying_key().to_public_key_der()?.to_vec(),
                 )
             }
@@ -235,7 +237,7 @@ impl WebauthnAuthenticator {
                             x: (*x).into(),
                         },
                     }),
-                    base64::encode(serde_cbor::to_vec(&private_key)?),
+                    BASE64.encode(serde_cbor::to_vec(&private_key)?),
                     verifying_key.to_public_key_der()?.to_vec(),
                 )
             }
@@ -251,7 +253,7 @@ impl WebauthnAuthenticator {
                         n: key.n().to_bytes_be(),
                         e: key.e().to_bytes_be(),
                     }),
-                    base64::encode(serde_cbor::to_vec(&private_key)?),
+                    BASE64.encode(serde_cbor::to_vec(&private_key)?),
                     key.to_public_key().to_public_key_der()?.to_vec(),
                 )
             }
@@ -314,11 +316,12 @@ impl WebauthnAuthenticator {
 
         let auth_data_bytes = Self::generate_authenticator_data(rp_id, attestation_flags, None)?.to_vec()?;
 
-        let challenge = base64::decode(credential_request_options.challenge.as_str())
-            .or(base64::decode_config(credential_request_options.challenge, URL_SAFE_NO_PAD))?;
+        let challenge = BASE64
+            .decode(credential_request_options.challenge.as_str())
+            .or(BASE64_URLSAFE_NOPAD.decode(credential_request_options.challenge))?;
         let collected_client_data = CollectedClientData {
             request_type: WEBAUTHN_REQUEST_TYPE_GET.to_owned(),
-            challenge: base64::encode_config(challenge, URL_SAFE_NO_PAD),
+            challenge: BASE64_URLSAFE_NOPAD.encode(challenge),
             origin: origin.as_ref().unwrap_or(rp_id).clone(),
             cross_origin: false,
             token_binding: None,
@@ -331,7 +334,7 @@ impl WebauthnAuthenticator {
         let signature = Self::generate_signature(auth_data_bytes.as_slice(), hash.as_slice(), private_key)?;
 
         Ok(PublicKeyCredentialRaw {
-            id: base64::encode_config(credential_id.clone(), URL_SAFE_NO_PAD),
+            id: BASE64_URLSAFE_NOPAD.encode(credential_id.clone()),
             raw_id: credential_id,
             response: Some(AuthenticatorAttestationResponseRaw {
                 attestation_object: None,
@@ -371,7 +374,9 @@ impl WebauthnAuthenticator {
         private_key: String,
     ) -> Result<Vec<u8>, WebauthnCredentialRequestError> {
         let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(
-            &base64::decode(private_key.as_str()).or(base64::decode_config(private_key.as_str(), URL_SAFE_NO_PAD))?,
+            &BASE64
+                .decode(private_key.as_str())
+                .or(BASE64_URLSAFE_NOPAD.decode(private_key.as_str()))?,
         )?;
 
         match private_key_response.key_alg {
@@ -503,7 +508,7 @@ fn test_credential_generation() {
                     rp_id: Some("localhost".to_owned()),
                     allow_credentials: vec![PublicKeyCredentialDescriptor {
                         cred_type: PublicKeyCredentialType::PublicKey,
-                        id: base64::encode_config(&cred_uuid, URL_SAFE_NO_PAD),
+                        id: BASE64_URLSAFE_NOPAD.encode(&cred_uuid),
                         transports: None,
                     }],
                     extensions: Extensions::default(),

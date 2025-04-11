@@ -220,6 +220,7 @@ mod ios {
 #[cfg(feature = "android")]
 pub mod android {
     use crate::{
+        base64::*,
         strings,
         webauthn::{
             authenticator::{
@@ -232,7 +233,6 @@ pub mod android {
             },
         },
     };
-    use base64::URL_SAFE_NO_PAD;
     use serde_derive::{Deserialize, Serialize};
     use std::{
         collections::HashMap,
@@ -268,11 +268,11 @@ pub mod android {
                 authenticator_attachment: Some("cross-platform".to_owned()),
                 client_extension_results: HashMap::new(),
                 response: raw.response.map(|response| AuthenticatorAttestationResponse {
-                    attestation_object: response.attestation_object.map(|ad| base64::encode_config(ad, URL_SAFE_NO_PAD)),
-                    client_data_json: base64::encode(&response.client_data_json),
-                    authenticator_data: response.authenticator_data.map(|ad| base64::encode_config(ad, URL_SAFE_NO_PAD)),
-                    signature: response.signature.map(|ad| base64::encode_config(ad, URL_SAFE_NO_PAD)),
-                    user_handle: response.user_handle.map(|ad| base64::encode_config(ad, URL_SAFE_NO_PAD)),
+                    attestation_object: response.attestation_object.map(|ad| BASE64_URLSAFE_NOPAD.encode(ad)),
+                    client_data_json: BASE64.encode(&response.client_data_json),
+                    authenticator_data: response.authenticator_data.map(|ad| BASE64_URLSAFE_NOPAD.encode(ad)),
+                    signature: response.signature.map(|ad| BASE64_URLSAFE_NOPAD.encode(ad)),
+                    user_handle: response.user_handle.map(|ad| BASE64_URLSAFE_NOPAD.encode(ad)),
                 }),
                 credential_type: Some("public-key".to_owned()),
                 error: None,

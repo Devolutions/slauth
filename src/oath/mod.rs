@@ -101,7 +101,7 @@ pub(crate) fn dt(hmac_res: &[u8]) -> u32 {
 #[inline]
 pub(crate) fn decode_hex_or_base_32(encoded: &str) -> Option<Vec<u8>> {
     // Try base32 first then is it does not follows RFC4648, try HEX
-    base32::decode(base32::Alphabet::RFC4648 { padding: false }, encoded).or_else(|| hex::decode(encoded).ok())
+    base32::decode(base32::Alphabet::Rfc4648 { padding: false }, encoded).or_else(|| hex::decode(encoded).ok())
 }
 
 #[cfg(target_arch = "wasm32")]

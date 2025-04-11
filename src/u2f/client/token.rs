@@ -5,7 +5,7 @@ use std::{
 };
 
 use ring::{
-    rand,
+    rand::{self, SystemRandom},
     signature::{self, KeyPair},
 };
 
@@ -24,7 +24,7 @@ pub(crate) fn gen_key_handle(app_id: &[u8], chall: &[u8]) -> String {
     let mut data = Vec::with_capacity(app_id.len() + chall.len());
     data.extend_from_slice(app_id);
     data.extend_from_slice(chall);
-    base32::encode(base32::Alphabet::RFC4648 { padding: false }, &data)
+    base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &data)
 }
 
 pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: &[u8]) -> Result<(RegisterResponse, SigningKey), Error> {
@@ -38,7 +38,9 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
 
     let key_handle = gen_key_handle(&application, &challenge);
 
-    let registered_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, registered_key_pkcs8_bytes)?;
+    let random = SystemRandom::new();
+    let registered_key_pair =
+        signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, registered_key_pkcs8_bytes, &random)?;
     let registered_pub_key = registered_key_pair.public_key();
     let mut user_public_key = [0u8; U2F_EC_POINT_SIZE];
 
@@ -54,7 +56,7 @@ pub fn register(req: RegisterRequest, attestation_cert: &[u8], attestation_key: 
     tbs_vec.extend_from_slice(key_handle.as_bytes());
     tbs_vec.extend_from_slice(&user_public_key);
 
-    let att_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, attestation_key)?;
+    let att_key_pair = signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, attestation_key, &random)?;
 
     let sig = att_key_pair.sign(&rng, tbs_vec.as_slice())?;
 
@@ -94,8 +96,11 @@ pub fn sign(req: AuthenticateRequest, signing_key: &SigningKey, counter: u32, us
         U2F_AUTH_CHECK_ONLY => Err(Error::U2FErrorCode(U2F_SW_CONDITIONS_NOT_SATISFIED)),
         U2F_AUTH_ENFORCE | U2F_AUTH_DONT_ENFORCE => {
             let rng = rand::SystemRandom::new();
-            let key_pair =
-                signature::EcdsaKeyPair::from_pkcs8(&signature::ECDSA_P256_SHA256_ASN1_SIGNING, signing_key.private_key.as_slice())?;
+            let key_pair = signature::EcdsaKeyPair::from_pkcs8(
+                &signature::ECDSA_P256_SHA256_ASN1_SIGNING,
+                signing_key.private_key.as_slice(),
+                &SystemRandom::new(),
+            )?;
 
             let mut tbs_vec = Vec::with_capacity(U2F_AUTH_MAX_DATA_TBS_SIZE);
             tbs_vec.extend_from_slice(&application);

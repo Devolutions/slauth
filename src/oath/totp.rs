@@ -202,7 +202,7 @@ impl OtpAuth for TOTPContext {
         let mut uri = format!(
             "otpauth://totp/{}?secret={}&algorithm={}&digits={}&period={}",
             label.unwrap_or("slauth"),
-            base32::encode(base32::Alphabet::RFC4648 { padding: false }, self.secret.as_slice()),
+            base32::encode(base32::Alphabet::Rfc4648 { padding: false }, self.secret.as_slice()),
             self.alg,
             self.digits,
             self.period
@@ -237,7 +237,7 @@ impl OtpAuth for TOTPContext {
 
             let param_it_opt = type_label_it
                 .next()
-                .and_then(|label_param| label_param.split('?').last().map(|s| s.split('&')));
+                .and_then(|label_param| label_param.split('?').next_back().map(|s| s.split('&')));
 
             param_it_opt
                 .ok_or_else(|| "Otpauth uri is malformed, missing parameters".to_string())
