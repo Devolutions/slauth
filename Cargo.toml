@@ -1,6 +1,6 @@
 [package]
 name = "slauth"
-version = "0.7.14"
+version = "0.7.15"
 authors = [
     "richer <richer.arc@gmail.com>",
     "LucFauvel <luc.fauvel@hotmail.com>",

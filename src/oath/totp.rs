@@ -358,7 +358,10 @@ mod native_bindings {
     #[no_mangle]
     pub unsafe extern "C" fn totp_gen_with(totp: *mut TOTPContext, elapsed: c_ulong) -> *mut c_char {
         let totp = &*totp;
-        strings::string_to_c_char(totp.gen_with(elapsed))
+      
+        // The conversion is useless on most platforms but it is needed for Windows
+        #[allow(clippy::useless_conversion)]
+        strings::string_to_c_char(totp.gen_with(elapsed.into()))
     }
 
     #[no_mangle]
