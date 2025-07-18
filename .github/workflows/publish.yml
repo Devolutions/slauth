@@ -3,6 +3,10 @@ name: Publish Package
 on:
   workflow_dispatch:
     inputs:
+      tag:
+        description: 'Git tag to checkout (optional, defaults to current ref)'
+        required: false
+        type: string
       beta:
         description: Publish a beta version (npmjs)
         default: false
@@ -173,3 +177,60 @@ jobs:
       run: cargo publish
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  build-swift:
+    if: ${{ inputs.swift }}
+    environment: cloudsmith-publish
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.tag || github.ref }}
+
+    - name: Setup rust
+      run: |
+        rustup target add aarch64-apple-ios
+        rustup target add x86_64-apple-ios
+        cargo install cargo-lipo
+
+    - name: Setup version
+      id: version
+      run: |
+        VERSION=$(grep -E "^\s*s\.version" Slauth.podspec \
+                  | awk -F"[\"\']" '{print $2}')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    # - name: Run build.sh
+    #   run: sh wrappers/swift/build.sh
+
+    - name: Package Pod
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        # locate all .a libraries under any release folder
+        AFILES=$(find target -type f -path '*/release/*.a')
+        zip -r Slauth-$VERSION.zip \
+          Slauth.podspec \
+          LICENSE \
+          wrappers/swift/classes \
+          slauth.h \
+          $AFILES
+        echo "PACKAGE=Slauth-$VERSION.zip" >> $GITHUB_ENV
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4.3.6
+      with:
+        name: Cocoapods
+        path: Slauth-${{ steps.version.outputs.version }}.zip
+
+    - name: Install Cloudsmith CLI
+      run: pip install --upgrade cloudsmith-cli
+
+    - name: Push package to Cloudsmith
+      run: cloudsmith push cocoapods devolutions/swift-public Slauth-${{ steps.version.outputs.version }}.zip
+      env:
+        CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+
+
+
