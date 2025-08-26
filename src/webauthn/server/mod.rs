@@ -189,7 +189,7 @@ impl CredentialCreationVerifier {
         }
     }
 
-    pub fn get_cert(&self) -> Result<EndEntityCert, Error> {
+    pub fn get_cert(&self) -> Result<EndEntityCert<'_>, Error> {
         if let Some(cert) = &self.cert {
             webpki::EndEntityCert::try_from(cert.as_slice()).map_err(Error::WebPkiError)
         } else {
