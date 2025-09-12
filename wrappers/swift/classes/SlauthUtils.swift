@@ -1,6 +1,6 @@
 import Foundation
 
-public struct SlauthUtils {
+public class SlauthUtils {
      public static func convertPkcs8ToPrivateKey(pkcs8String: String) -> String {
         let cString = pkcs8_to_custom_private_key(pkcs8String)
         let privateKey = String(cString: cString!)
