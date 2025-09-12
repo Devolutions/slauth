@@ -23,20 +23,6 @@ public class WebAuthnCreationResponse: NSObject {
         return privateKey
     }
 
-    public func convertPkcs8ToPrivateKey(pkcs8String: String) -> String {
-        let cString = pkcs8_to_custom_private_key(pkcs8String)
-        let privateKey = String(cString: cString!)
-        free(cString)
-        return privateKey
-    }
-
-    public func convertPrivateKeyToPkcs8(privateKey: String) -> String {
-        let cString = private_key_to_pkcs8_der(privateKey)
-        let pkcs8String = String(cString: cString!)
-        free(cString)
-        return pkcs8String
-    }
-
 	public func getAttestationObject() -> Data {
 	    let buffer = get_attestation_object_from_response(self.raw)
         return Data(bytes: buffer.data, count: Int(buffer.len))
