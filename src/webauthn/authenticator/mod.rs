@@ -20,11 +20,11 @@ use crate::{
 };
 use ed25519_dalek::{pkcs8::EncodePublicKey, SignatureError, Signer};
 use hmac::digest::Digest;
-use p256::ecdsa::VerifyingKey;
+use p256::{ecdsa::VerifyingKey, pkcs8::ObjectIdentifier};
 use rand_core::OsRng;
 use rsa::{
     pkcs1::{DecodeRsaPrivateKey, EncodeRsaPrivateKey},
-    pkcs8::DecodePrivateKey,
+    pkcs8::{DecodePrivateKey, EncodePrivateKey, PrivateKeyInfo},
     signature::SignatureEncoding,
     traits::PublicKeyParts,
 };
@@ -49,6 +49,10 @@ use crate::webauthn::{
     },
     server::{CredentialCreationVerifier, CredentialRequestVerifier},
 };
+
+const OID_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+const OID_EC: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
+const OID_ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
 
 #[derive(Debug)]
 pub enum WebauthnCredentialRequestError {
@@ -398,6 +402,75 @@ impl WebauthnAuthenticator {
                 let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
                 Ok(signing_key.sign([auth_data_bytes, client_data_hash].concat().as_slice()).to_vec())
             }
+            _ => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+        }
+    }
+
+    pub fn convert_private_key_to_pkcs8_der(private_key: String) -> Result<String, WebauthnCredentialRequestError> {
+        let private_key_response: PrivateKeyResponse = serde_cbor::from_slice(
+            &BASE64
+                .decode(private_key.as_str())
+                .or(BASE64_URLSAFE_NOPAD.decode(private_key.as_str()))?,
+        )?;
+
+        match private_key_response.key_alg {
+            CoseAlgorithmIdentifier::Ed25519 => {
+                let key = ed25519_dalek::SigningKey::try_from(private_key_response.private_key.as_slice()).or(
+                    ed25519_dalek::SigningKey::from_pkcs8_der(private_key_response.private_key.as_slice()),
+                )?;
+                Ok(BASE64_URLSAFE_NOPAD.encode(key.to_pkcs8_der()?.as_bytes()))
+            }
+            CoseAlgorithmIdentifier::ES256 => {
+                let key = p256::ecdsa::SigningKey::from_pkcs8_der(private_key_response.private_key.as_slice())
+                    .or(p256::ecdsa::SigningKey::try_from(private_key_response.private_key.as_slice()))?;
+                Ok(BASE64_URLSAFE_NOPAD.encode(key.to_pkcs8_der()?.as_bytes()))
+            }
+            CoseAlgorithmIdentifier::RSA => {
+                let key = rsa::RsaPrivateKey::from_pkcs1_der(&private_key_response.private_key)
+                    .or(rsa::RsaPrivateKey::from_pkcs8_der(&private_key_response.private_key))?;
+                let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new(key);
+                Ok(BASE64_URLSAFE_NOPAD.encode(signing_key.to_pkcs8_der()?.as_bytes()))
+            }
+            _ => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
+        }
+    }
+
+    pub fn convert_pkcs8_der_to_custom_private_key(private_key: String) -> Result<String, WebauthnCredentialRequestError> {
+        let private_key_bytes = BASE64
+            .decode(private_key.as_str())
+            .or(BASE64_URLSAFE_NOPAD.decode(private_key.as_str()))?;
+
+        match PrivateKeyInfo::try_from(private_key_bytes.as_slice())?.algorithm.oid {
+            OID_ED25519 => {
+                let key = ed25519_dalek::SigningKey::try_from(private_key_bytes.as_slice())
+                    .or(ed25519_dalek::SigningKey::from_pkcs8_der(private_key_bytes.as_slice()))?;
+                let private_key = PrivateKeyResponse {
+                    private_key: key.to_bytes().to_vec(),
+                    key_alg: CoseAlgorithmIdentifier::Ed25519,
+                };
+                Ok(BASE64.encode(serde_cbor::to_vec(&private_key)?))
+            }
+
+            OID_RSA => {
+                let key =
+                    rsa::RsaPrivateKey::from_pkcs1_der(&private_key_bytes).or(rsa::RsaPrivateKey::from_pkcs8_der(&private_key_bytes))?;
+                let private_key = PrivateKeyResponse {
+                    private_key: key.to_pkcs1_der()?.to_bytes().to_vec(),
+                    key_alg: CoseAlgorithmIdentifier::RSA,
+                };
+                Ok(BASE64.encode(serde_cbor::to_vec(&private_key)?))
+            }
+
+            OID_EC => {
+                let key = p256::ecdsa::SigningKey::from_pkcs8_der(private_key_bytes.as_slice())
+                    .or(p256::ecdsa::SigningKey::try_from(private_key_bytes.as_slice()))?;
+                let private_key = PrivateKeyResponse {
+                    private_key: key.to_bytes().to_vec(),
+                    key_alg: CoseAlgorithmIdentifier::ES256,
+                };
+                Ok(BASE64.encode(serde_cbor::to_vec(&private_key)?))
+            }
+
             _ => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
         }
     }
