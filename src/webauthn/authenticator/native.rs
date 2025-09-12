@@ -171,6 +171,32 @@ mod ios {
     }
 
     #[no_mangle]
+    pub unsafe extern "C" fn private_key_to_pkcs8_der(private_key: *const c_char) -> *mut c_char {
+        let private_key = strings::c_char_to_string(private_key);
+
+        let key = WebauthnAuthenticator::convert_private_key_to_pkcs8_der(private_key);
+
+        let cstring = key.ok().and_then(|k| CString::new(k).ok());
+        match cstring {
+            Some(cstring) => cstring.into_raw(),
+            None => null_mut(),
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn pkcs8_to_custom_private_key(pkcs8_key: *const c_char) -> *mut c_char {
+        let pkcs8_key = strings::c_char_to_string(pkcs8_key);
+
+        let key = WebauthnAuthenticator::convert_pkcs8_der_to_custom_private_key(pkcs8_key);
+
+        let cstring = key.ok().and_then(|k| CString::new(k).ok());
+        match cstring {
+            Some(cstring) => cstring.into_raw(),
+            None => null_mut(),
+        }
+    }
+
+    #[no_mangle]
     pub unsafe extern "C" fn get_auth_data_from_response(res: *mut AuthenticatorRequestResponse) -> Buffer {
         if res.is_null() {
             return Buffer { data: null_mut(), len: 0 };

@@ -84,4 +84,8 @@ public interface JNA extends Library {
     String get_error_from_creation_response(Pointer req);
 
     String get_private_key_from_response(Pointer req);
+
+    String private_key_to_pkcs8_der(String private_key);
+
+    String pkcs8_to_custom_private_key(String pkcs8_key);
 }

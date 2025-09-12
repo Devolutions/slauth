@@ -309,3 +309,7 @@ struct Buffer get_signature_from_response(struct AuthenticatorRequestResponse *r
 char *get_error_message(struct AuthenticatorRequestResponse *res);
 
 bool is_success(struct AuthenticatorRequestResponse *res);
+
+char *private_key_to_pkcs8_der(const char *private_key);
+
+char *pkcs8_to_custom_private_key(const char *pkcs8_key);
