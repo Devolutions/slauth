@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+rm -rf ./package
+
 # Build Rust libraries for iOS targets
 cargo build --target aarch64-apple-ios --release
 cargo build --target aarch64-apple-ios-sim --release
