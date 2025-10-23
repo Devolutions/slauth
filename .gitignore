@@ -20,3 +20,6 @@ android/NDK/
 local.properties
 wrappers/android/build
 build/
+libslauth.xcframework/
+.swiftpm/
+package/

@@ -186,8 +186,8 @@ jobs:
     - name: Setup rust
       run: |
         rustup target add aarch64-apple-ios
-        rustup target add x86_64-apple-ios
-        cargo install cargo-lipo
+        rustup target add x86_64-apple-darwin
+        rustup target add aarch64-apple-ios-sim
 
     - name: Setup version
       id: version

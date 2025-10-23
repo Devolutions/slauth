@@ -1,3 +1,9 @@
+import Foundation
+
+#if canImport(SlauthFFI)
+import SlauthFFI
+#endif
+
 @available(iOS 15.0, *)
 public class WebAuthnRequestResponse: NSObject, RustObject {
 

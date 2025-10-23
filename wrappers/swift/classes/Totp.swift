@@ -8,6 +8,10 @@
 
 import Foundation
 
+#if canImport(SlauthFFI)
+import SlauthFFI
+#endif
+
 public class Totp: NSObject, RustObject {
 	var raw: OpaquePointer
 	
