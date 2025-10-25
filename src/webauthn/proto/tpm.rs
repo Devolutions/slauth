@@ -123,10 +123,14 @@ impl TPM {
         let (scheme, hashed) = match self.alg.into() {
             CoseAlgorithmIdentifier::RS1 => (
                 Pkcs1v15Sign::new::<Sha1>(),
+                //Allow deprecated pending rust crypto generic_array removal
+                #[allow(deprecated)]
                 sha1::Sha1::digest(self.cert_info.as_slice()).as_slice().to_vec(),
             ),
             CoseAlgorithmIdentifier::RSA => (
                 Pkcs1v15Sign::new::<Sha256>(),
+                //Allow deprecated pending rust crypto generic_array removal
+                #[allow(deprecated)]
                 sha2::Sha256::digest(self.cert_info.as_slice()).as_slice().to_vec(),
             ),
             _ => return Err(Error::TpmError(TpmError::SignatureHashInvalid(self.alg))),

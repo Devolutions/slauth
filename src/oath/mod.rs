@@ -1,3 +1,5 @@
+//Have to allow deprecated because hmac crate hasn't been updated yet to GenericArray 1.0
+#[allow(deprecated)]
 use hmac::{
     digest::{generic_array::GenericArray, FixedOutputReset, InvalidLength, OutputSizeUser},
     Mac, SimpleHmac,
@@ -47,6 +49,7 @@ impl MacHashKey {
     }
 }
 
+#[allow(deprecated)]
 pub(crate) enum HmacShaResult {
     RSHA1(GenericArray<u8, <Sha1 as OutputSizeUser>::OutputSize>),
     RSHA256(GenericArray<u8, <Sha256 as OutputSizeUser>::OutputSize>),

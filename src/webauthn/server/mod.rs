@@ -234,6 +234,9 @@ impl CredentialCreationVerifier {
         } else {
             hasher.update(get_default_rp_id(&self.origin));
         }
+
+        //Allow deprecated pending rust crypto generic_array removal
+        #[allow(deprecated)]
         if attestation.auth_data.rp_id_hash != hasher.finalize().as_slice() {
             return Err(Error::CredentialError(CredentialError::Rp));
         }
@@ -601,6 +604,8 @@ impl CredentialRequestVerifier {
         } else {
             hasher.update(get_default_rp_id(&self.origin));
         }
+        //Allow deprecated pending rust crypto generic_array removal
+        #[allow(deprecated)]
         if auth_data.rp_id_hash != hasher.finalize_reset().as_slice() {
             return Err(Error::CredentialError(CredentialError::Rp));
         }
