@@ -68,7 +68,11 @@ pub mod client {
 
                     let mut data = Vec::with_capacity(64);
 
+                    
+                    //Allowing deprecated because hmac library hasn't updated yet
+                    #[allow(deprecated)]
                     data.extend_from_slice(challenge_param.as_slice());
+                    #[allow(deprecated)]
                     data.extend_from_slice(application_parameter.as_slice());
 
                     let raw_req = RawRequest {
@@ -133,7 +137,11 @@ pub mod client {
 
                     let mut data = Vec::new();
 
+
+                    //Allow deprecated pending rust crypto generic_array removal
+                    #[allow(deprecated)]
                     data.extend_from_slice(challenge_param.as_slice());
+                    #[allow(deprecated)]
                     data.extend_from_slice(application_parameter.as_slice());
                     data.push(signing_key.key_handle.len() as u8);
                     data.extend_from_slice(signing_key.key_handle.as_bytes());

@@ -7,6 +7,10 @@
 
 import Foundation
 
+#if canImport(SlauthFFI)
+import SlauthFFI
+#endif
+
 public class WebRequest : RustObject {
 	var raw: OpaquePointer
 	

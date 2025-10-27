@@ -8,6 +8,10 @@
 
 import Foundation
 
+#if canImport(SlauthFFI)
+import SlauthFFI
+#endif
+
 public class Hotp: NSObject, RustObject {
 	var raw: OpaquePointer
 	

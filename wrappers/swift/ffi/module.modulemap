@@ -1,0 +1,4 @@
+module SlauthFFI [system] {
+    header "../headers/slauth.h"
+    export *
+}

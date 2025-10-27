@@ -1,0 +1,6 @@
+framework module SlauthFFI {
+    umbrella header "../headers/slauth.h"
+
+    export *
+    module * { export * }
+}

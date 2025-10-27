@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(SlauthFFI)
+import SlauthFFI
+#endif
+
 public class SlauthUtils {
      public static func convertPkcs8ToPrivateKey(pkcs8String: String) -> String {
         let cString = pkcs8_to_custom_private_key(pkcs8String)

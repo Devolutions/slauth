@@ -19,7 +19,7 @@ on:
         required: true
         type: boolean
       swift:
-        description: Publish a swift version (cocoapods)
+        description: Publish a swift version (swift package)
         default: true
         required: true
         type: boolean
@@ -186,42 +186,35 @@ jobs:
     - name: Setup rust
       run: |
         rustup target add aarch64-apple-ios
-        rustup target add x86_64-apple-ios
-        cargo install cargo-lipo
+        rustup target add x86_64-apple-darwin
+        rustup target add aarch64-apple-ios-sim
+        rustup target add aarch64-apple-darwin
 
     - name: Setup version
       id: version
       run: |
-        VERSION=$(grep -E "^\s*s\.version" Slauth.podspec \
-                  | awk -F"[\"\']" '{print $2}')
+        VERSION=$(grep -E "^version\s*=" Cargo.toml | head -1 | awk -F'"' '{print $2}')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: Run build.sh
+    - name: Generate package
       run: sh wrappers/swift/build.sh
 
-    - name: Package Pod
+    - name: Package Swift Package
       run: |
         VERSION=${{ steps.version.outputs.version }}
-        # locate all .a libraries under any release folder
-        AFILES=$(find target -type f -path '*/release/*.a')
-        zip -r Slauth-$VERSION.zip \
-          Slauth.podspec \
-          LICENSE \
-          wrappers/swift/classes \
-          slauth.h \
-          $AFILES
-        echo "PACKAGE=Slauth-$VERSION.zip" >> $GITHUB_ENV
+        mv package Slauth-$VERSION
+        zip -r Slauth-$VERSION.zip Slauth-$VERSION
 
-    - name: Upload artifact
+    - name: Upload package
       uses: actions/upload-artifact@v4.3.6
       with:
-        name: Cocoapods
-        path: Slauth-${{ steps.version.outputs.version }}.zip
+        name: swift-zip
+        path: ./Slauth-${{ steps.version.outputs.version }}.zip
 
     - name: Install Cloudsmith CLI
       run: pip install --upgrade cloudsmith-cli
 
     - name: Push package to Cloudsmith
-      run: cloudsmith push cocoapods devolutions/swift-public Slauth-${{ steps.version.outputs.version }}.zip
+      run: cloudsmith push swift devolutions/swift-public Slauth-${{ steps.version.outputs.version }}.zip --name Slauth --version ${{ steps.version.outputs.version }} --scope devolutions
       env:
         CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
