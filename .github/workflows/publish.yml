@@ -39,6 +39,9 @@ jobs:
     environment: npm-publish
     if: ${{ inputs.wasm }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
     - name: Checkout repo
@@ -59,9 +62,6 @@ jobs:
         name: wasm
         path: dist/bundler
 
-    - name: Configure NPM
-      run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
-
     - name: Publish
       run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
       working-directory: dist/bundler
@@ -75,6 +75,9 @@ jobs:
     environment: npm-publish
     if: ${{ inputs.wasm_web }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout repo
@@ -94,9 +97,6 @@ jobs:
         with:
           name: wasm-web
           path: dist/web
-
-      - name: Configure NPM
-        run: npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}"
 
       - name: Publish
         run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
