@@ -196,8 +196,33 @@ jobs:
         VERSION=$(grep -E "^version\s*=" Cargo.toml | head -1 | awk -F'"' '{print $2}')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+    - name: Setup code signing
+      run: |
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+        CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+        echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+        security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+        security list-keychain -d user -s $KEYCHAIN_PATH
+
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+      env:
+        CERTIFICATE_BASE64: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE }}
+        CERTIFICATE_PASSWORD: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE_PASSWORD }}
+        KEYCHAIN_PASSWORD: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE_PASSWORD }}
+
     - name: Generate package
       run: sh wrappers/swift/build.sh
+
+    - name: Sign XCFramework
+      run: |
+        codesign --timestamp --sign "$SIGNING_IDENTITY" package/libslauth.xcframework
+        codesign --verify --verbose package/libslauth.xcframework
+      env:
+        SIGNING_IDENTITY: "Developer ID Application: Devolutions inc."
 
     - name: Package Swift Package
       run: |
