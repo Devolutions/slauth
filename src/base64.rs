@@ -15,4 +15,4 @@ const CONFIG_NO_PAD: GeneralPurposeConfig = GeneralPurposeConfig::new()
     .with_decode_allow_trailing_bits(true);
 
 pub const BASE64: GeneralPurpose = GeneralPurpose::new(&alphabet::STANDARD, CONFIG);
-pub const BASE64_URLSAFE_NO_PAD: GeneralPurpose = GeneralPurpose::new(&alphabet::URL_SAFE, CONFIG_NO_PAD);
+pub const BASE64_URL_SAFE_NO_PAD: GeneralPurpose = GeneralPurpose::new(&alphabet::URL_SAFE, CONFIG_NO_PAD);

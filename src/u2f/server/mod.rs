@@ -75,7 +75,7 @@ impl U2fRequestBuilder {
             registered_keys,
         } = self;
 
-        let challenge = BASE64_URLSAFE_NO_PAD.encode(
+        let challenge = BASE64_URL_SAFE_NO_PAD.encode(
             challenge
                 .as_ref()
                 .ok_or_else(|| Error::Other("Unable to build a U2F request without a challenge".to_string()))?,
@@ -153,13 +153,13 @@ impl U2fRegisterResponse {
         }
 
         // Validate that input is consistent with what's expected
-        let registration_data_bytes = BASE64_URLSAFE_NO_PAD
+        let registration_data_bytes = BASE64_URL_SAFE_NO_PAD
             .decode(registration_data)
             .map_err(|e| Error::Registration(e.to_string()))?;
         let raw_rsp = raw_message::apdu::Response::read_from(&registration_data_bytes)?;
         let raw_u2f_reg = raw_message::RegisterResponse::from_apdu(raw_rsp)?;
 
-        let client_data_bytes = BASE64_URLSAFE_NO_PAD
+        let client_data_bytes = BASE64_URL_SAFE_NO_PAD
             .decode(client_data)
             .map_err(|e| Error::Registration(e.to_string()))?;
 
@@ -219,13 +219,13 @@ impl U2fSignResponse {
             ..
         } = &self;
 
-        let signature_data_byte = BASE64_URLSAFE_NO_PAD
+        let signature_data_byte = BASE64_URL_SAFE_NO_PAD
             .decode(signature_data)
             .map_err(|e| Error::Registration(e.to_string()))?;
         let raw_rsp = raw_message::apdu::Response::read_from(&signature_data_byte)?;
         let raw_u2f_sign = raw_message::AuthenticateResponse::from_apdu(raw_rsp)?;
 
-        let client_data_bytes = BASE64_URLSAFE_NO_PAD
+        let client_data_bytes = BASE64_URL_SAFE_NO_PAD
             .decode(client_data)
             .map_err(|e| Error::Registration(e.to_string()))?;
 

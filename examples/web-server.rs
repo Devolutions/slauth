@@ -216,5 +216,5 @@ pub fn gen_challenge(len: usize) -> String {
     let value = (0..len)
         .map(|_| charset.chars().choose(&mut rng).unwrap() as u8)
         .collect::<Vec<u8>>();
-    BASE64_URLSAFE_NO_PAD.encode(value.as_slice())
+    BASE64_URL_SAFE_NO_PAD.encode(value.as_slice())
 }
