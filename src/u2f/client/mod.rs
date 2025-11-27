@@ -97,8 +97,8 @@ pub mod client {
                     Ok((
                         Response::Register(U2fRegisterResponse {
                             version: U2F_V2_VERSION_STR.to_string(),
-                            client_data: BASE64_URLSAFE_NOPAD.encode(&client_data_str),
-                            registration_data: BASE64_URLSAFE_NOPAD.encode(&raw_rsp_byte),
+                            client_data: BASE64_URLSAFE_NO_PAD.encode(&client_data_str),
+                            registration_data: BASE64_URLSAFE_NO_PAD.encode(&raw_rsp_byte),
                         }),
                         signing_key,
                     ))
@@ -167,8 +167,8 @@ pub mod client {
 
                     Ok(Response::Sign(U2fSignResponse {
                         key_handle: signing_key.key_handle.clone(),
-                        signature_data: BASE64_URLSAFE_NOPAD.encode(&raw_rsp_byte),
-                        client_data: BASE64_URLSAFE_NOPAD.encode(&client_data_str),
+                        signature_data: BASE64_URLSAFE_NO_PAD.encode(&raw_rsp_byte),
+                        client_data: BASE64_URLSAFE_NO_PAD.encode(&client_data_str),
                     }))
                 }
             }
@@ -393,7 +393,7 @@ pub mod client {
         pub unsafe extern "C" fn signing_key_to_string(s: *mut SigningKey) -> *mut c_char {
             let SigningKey { key_handle, private_key } = &*s;
 
-            strings::string_to_c_char(format!("{}.{}", key_handle, BASE64_URLSAFE_NOPAD.encode(private_key)))
+            strings::string_to_c_char(format!("{}.{}", key_handle, BASE64_URLSAFE_NO_PAD.encode(private_key)))
         }
 
         #[no_mangle]
@@ -409,7 +409,7 @@ pub mod client {
                     let mut parts = s.split('.');
                     let l = parts.next().and_then(|key_handle| parts.next().map(|b64| (key_handle, b64)));
 
-                    l.and_then(|(k, b64)| BASE64_URLSAFE_NOPAD.decode(b64).ok().map(|b64_v| (k.to_string(), b64_v)))
+                    l.and_then(|(k, b64)| BASE64_URLSAFE_NO_PAD.decode(b64).ok().map(|b64_v| (k.to_string(), b64_v)))
                 })
                 .map(|(key_handle, key)| {
                     Box::into_raw(Box::new(SigningKey {

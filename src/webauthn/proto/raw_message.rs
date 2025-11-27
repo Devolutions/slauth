@@ -617,7 +617,7 @@ impl Display for Coordinates {
             _ => {}
         }
 
-        write!(f, "{}", BASE64_URLSAFE_NOPAD.encode(&key))
+        write!(f, "{}", BASE64_URLSAFE_NO_PAD.encode(&key))
     }
 }
 
@@ -625,7 +625,7 @@ impl FromStr for Coordinates {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let key = BASE64_URLSAFE_NOPAD.decode(s).map_err(Error::Base64Error)?;
+        let key = BASE64_URLSAFE_NO_PAD.decode(s).map_err(Error::Base64Error)?;
 
         match key[0] {
             ECDSA_Y_PREFIX_UNCOMPRESSED => {
