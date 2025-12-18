@@ -82,7 +82,7 @@ mod ios {
 
         let credential_id: Vec<u8> = std::slice::from_raw_parts(credential_id, credential_id_length).into();
         let algorithms_raw: Vec<i32> = std::slice::from_raw_parts(cose_algorithm_identifiers, cose_algorithm_identifiers_length).into();
-        let alg = WebauthnAuthenticator::find_best_supported_algorithm(
+        let alg = WebauthnAuthenticator::find_first_supported_algorithm(
             algorithms_raw
                 .into_iter()
                 .map(CoseAlgorithmIdentifier::from)
