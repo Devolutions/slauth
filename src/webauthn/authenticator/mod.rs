@@ -153,7 +153,7 @@ impl WebauthnAuthenticator {
             .into_iter()
             .map(|x| x.alg.into())
             .collect();
-        let alg = Self::find_best_supported_algorithm(algs.as_slice())?;
+        let alg = Self::find_first_supported_algorithm(algs.as_slice())?;
 
         let (attestation_object, private_key_response, der) =
             Self::generate_attestation_object(alg, aaguid, &credential_id, rp_id, attestation_flags)?;
@@ -475,56 +475,43 @@ impl WebauthnAuthenticator {
         }
     }
 
-    fn find_best_supported_algorithm(
+    fn find_first_supported_algorithm(
         pub_key_cred_params: &[CoseAlgorithmIdentifier],
     ) -> Result<CoseAlgorithmIdentifier, WebauthnCredentialRequestError> {
-        //Order of preference for credential type is: Ed25519 > EC2 > RSA > RS1
-        let mut possible_credential_types = vec![
-            CoseAlgorithmIdentifier::RSA,
-            CoseAlgorithmIdentifier::ES256,
+        let possible_credential_types = [
             CoseAlgorithmIdentifier::Ed25519,
+            CoseAlgorithmIdentifier::ES256,
+            CoseAlgorithmIdentifier::RSA,
         ];
 
-        let mut best_alg_index = None;
-        let iterator = pub_key_cred_params.iter();
-        for param in iterator {
-            if let Some(alg_index) = possible_credential_types.iter().position(|r| r == param) {
-                if best_alg_index.filter(|x| x > &alg_index).is_none() {
-                    best_alg_index = Some(alg_index);
-                }
-
-                if alg_index == possible_credential_types.len() - 1 {
-                    break;
-                }
-            }
-        }
-
-        match best_alg_index {
-            None => Err(WebauthnCredentialRequestError::AlgorithmNotSupported),
-            Some(index) => Ok(possible_credential_types.remove(index)),
-        }
+        pub_key_cred_params
+            .iter()
+            .find(|param| possible_credential_types.contains(param))
+            .copied()
+            .ok_or(WebauthnCredentialRequestError::AlgorithmNotSupported)
     }
 }
 
 #[test]
-fn test_best_alg() {
-    let params = vec![
+fn test_first_alg() {
+    let params = [
+        CoseAlgorithmIdentifier::RS1,
+        CoseAlgorithmIdentifier::NotSupported,
         CoseAlgorithmIdentifier::Ed25519,
         CoseAlgorithmIdentifier::ES256,
-        CoseAlgorithmIdentifier::RS1,
         CoseAlgorithmIdentifier::RSA,
     ];
 
-    let alg = WebauthnAuthenticator::find_best_supported_algorithm(&params).unwrap();
+    let alg = WebauthnAuthenticator::find_first_supported_algorithm(&params).unwrap();
     assert_eq!(alg, CoseAlgorithmIdentifier::Ed25519);
 
-    let params2 = vec![
+    let params2 = [
         CoseAlgorithmIdentifier::ES256,
         CoseAlgorithmIdentifier::RS1,
         CoseAlgorithmIdentifier::RSA,
     ];
 
-    let alg = WebauthnAuthenticator::find_best_supported_algorithm(&params2).unwrap();
+    let alg = WebauthnAuthenticator::find_first_supported_algorithm(&params2).unwrap();
     assert_eq!(alg, CoseAlgorithmIdentifier::ES256);
 }
 
