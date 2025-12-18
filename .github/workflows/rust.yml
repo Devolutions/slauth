@@ -1,4 +1,4 @@
-name: Test Package
+name: Build & Test Package
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       - master
 
 jobs:
-  build:
+  build-rust:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,3 +18,81 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
+
+  build-wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Setup wasm
+      run: |
+        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        wasm-pack --version
+
+    - name: Build
+      run: sh build.sh
+      working-directory: wrappers/wasm
+
+  build-wasm-web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup wasm
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
+
+      - name: Build
+        run: bash build-web.sh
+        working-directory: wrappers/wasm
+
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 1.8
+      uses: actions/setup-java@v4
+      with:
+        java-version: 8
+        distribution: adopt
+
+    - name: Setup Android
+      run: |
+        wget https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
+        unzip android-ndk-r23b-linux.zip
+        export ANDROID_NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r23b
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android" >> $GITHUB_ENV::LIBRARY_PATH
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android" >> $GITHUB_ENV::LD_LIBRARY_PATH
+        rustup target add aarch64-linux-android
+        rustup target add x86_64-linux-android
+        rustup target add x86_64-unknown-linux-gnu
+
+    - name: Build
+      run: sh wrappers/android/build.sh
+
+  build-swift:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup rust
+        run: |
+          rustup target add aarch64-apple-ios
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-ios-sim
+          rustup target add aarch64-apple-darwin
+
+      - name: Generate package
+        run: sh wrappers/swift/build.sh
