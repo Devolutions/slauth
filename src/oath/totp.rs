@@ -161,7 +161,7 @@ impl TOTPContext {
             _ => {}
         }
 
-        for i in (counter - self.backward_resync)..(counter + self.forward_resync) {
+        for i in (counter - self.backward_resync)..=(counter + self.forward_resync) {
             if self.gen_at(i).as_str().eq(value) {
                 match i {
                     i if i > counter => {
