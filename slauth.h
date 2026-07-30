@@ -313,3 +313,12 @@ bool is_success(struct AuthenticatorRequestResponse *res);
 char *private_key_to_pkcs8_der(const char *private_key);
 
 char *pkcs8_to_custom_private_key(const char *pkcs8_key);
+
+void request_response_free(struct AuthenticatorRequestResponse *res);
+
+/**
+ * Reclaims any `char*` this module returned; they are all `CString::into_raw` allocations and
+ * cannot be released with the caller's `free`. The buffer is wiped first because one of them
+ * (`get_private_key_from_response`) carries private key material.
+ */
+void slauth_string_free(char *s);
