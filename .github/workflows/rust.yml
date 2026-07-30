@@ -96,3 +96,31 @@ jobs:
 
       - name: Generate package
         run: sh wrappers/swift/build.sh
+
+  build-dotnet:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Setup rust
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          rustup target add aarch64-pc-windows-msvc
+
+      # ring needs a C compiler to cross-compile aarch64; the runner ships LLVM but not on PATH.
+      - name: Expose LLVM
+        run: echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Configure .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # Builds both Windows natives, runs the managed tests against the real C ABI, then packs.
+      - name: Generate package
+        run: ./build.ps1
+        shell: pwsh
+        working-directory: wrappers/dotnet

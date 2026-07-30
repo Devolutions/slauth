@@ -23,3 +23,9 @@ build/
 libslauth.xcframework/
 .swiftpm/
 package/
+
+# .NET wrapper (wrappers/dotnet)
+bin/
+obj/
+# Native libraries staged per RID by wrappers/dotnet/build.ps1 before packing
+wrappers/dotnet/Devolutions.Slauth/runtimes/

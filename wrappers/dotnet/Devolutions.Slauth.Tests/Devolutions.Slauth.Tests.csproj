@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Devolutions.Slauth\Devolutions.Slauth.csproj" />
+  </ItemGroup>
+
+  <!--
+    These tests exercise the real C ABI, so they need the cdylib next to the test assembly.
+    Build the release cdylib at the repository root first; build.ps1 does this for you.
+  -->
+  <ItemGroup>
+    <None Include="..\..\..\target\release\slauth.dll" Condition="Exists('..\..\..\target\release\slauth.dll')">
+      <Link>slauth.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\..\target\release\libslauth.so" Condition="Exists('..\..\..\target\release\libslauth.so')">
+      <Link>libslauth.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\..\target\release\libslauth.dylib" Condition="Exists('..\..\..\target\release\libslauth.dylib')">
+      <Link>libslauth.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
