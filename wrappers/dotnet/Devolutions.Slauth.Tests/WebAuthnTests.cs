@@ -98,6 +98,63 @@ public class WebAuthnTests
     }
 
     [Fact]
+    public void Create_WithExtensionDataFlag_Throws()
+    {
+        // slauth never serializes an extension map, so ED would advertise CBOR that is not there.
+        Assert.Throws<ArgumentException>(() => WebAuthnCreationResponse.Create(
+            Aaguid, NewCredentialId(), RpId, CreationFlags | AttestationFlags.ExtensionDataIncluded, CoseAlgorithm.Es256));
+    }
+
+    [Fact]
+    public void Create_WithOversizedCredentialId_Throws()
+    {
+        // The attested credential data length field is two bytes and slauth casts to u16 unchecked, so a
+        // longer id wraps and the relying party reads the overflow as the start of the COSE key.
+        byte[] oversized = new byte[WebAuthnCreationResponse.MaxCredentialIdLength + 1];
+
+        Assert.Throws<ArgumentException>(() => WebAuthnCreationResponse.Create(
+            Aaguid, oversized, RpId, CreationFlags, CoseAlgorithm.Es256));
+    }
+
+    [Fact]
+    public void Create_WithLargestPermittedCredentialId_Succeeds()
+    {
+        // Guards the boundary itself: the check must reject only what genuinely overflows the length field.
+        byte[] largest = RandomNumberGenerator.GetBytes(WebAuthnCreationResponse.MaxCredentialIdLength);
+
+        using WebAuthnCreationResponse created = WebAuthnCreationResponse.Create(
+            Aaguid, largest, RpId, CreationFlags, CoseAlgorithm.Es256);
+
+        byte[] authData = AttestationParser.ReadAuthData(created.AttestationObject);
+        int encodedLength = (authData[53] << 8) | authData[54];
+        Assert.Equal(largest.Length, encodedLength);
+    }
+
+    [Theory]
+    [InlineData(AttestationFlags.AttestedCredentialDataIncluded)]
+    [InlineData(AttestationFlags.ExtensionDataIncluded)]
+    public void Assertion_WithStructuralFlag_Throws(AttestationFlags unsupported)
+    {
+        // Both flags promise bytes the assertion path never appends: it always passes slauth None for
+        // attested credential data and slauth serializes no extensions. authenticatorData would be
+        // malformed while IsSuccess stayed true.
+        Assert.Throws<ArgumentException>(() => WebAuthnRequestResponse.Create(
+            RpId, "not-a-key", AssertionFlags | unsupported, SHA256.HashData(new byte[] { 9 })));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(31)]
+    [InlineData(33)]
+    public void Assertion_WithWrongClientDataHashLength_Throws(int length)
+    {
+        // slauth signs whatever it is handed and reports success, so a wrong-sized digest would only fail
+        // later at the relying party.
+        Assert.Throws<ArgumentException>(() => WebAuthnRequestResponse.Create(
+            RpId, "not-a-key", AssertionFlags, new byte[length]));
+    }
+
+    [Fact]
     public void Assertion_WithGarbageKey_ReportsFailureRatherThanCrashing()
     {
         // The failure path still returns a response object, so this also frees an error-message string.

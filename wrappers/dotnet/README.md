@@ -38,6 +38,18 @@ byte[] signature = assertion.Signature;
 `Create` reports a failed assertion through `IsSuccess`/`ErrorMessage`; `CreateOrThrow` turns that into
 a `SlauthException`.
 
+### Arguments the wrapper rejects
+
+slauth signs whatever it is handed and reports success, so inputs that produce authenticatorData no
+relying party can parse are rejected up front with an `ArgumentException` rather than surfacing as a
+puzzling failure at the relying party:
+
+- `AttestedCredentialDataIncluded` is **required** when creating a credential and **rejected** on an
+  assertion — the assertion ABI has no way to pass attested credential data.
+- `ExtensionDataIncluded` is rejected on both paths; slauth never serializes an extension map.
+- `clientDataHash` must be exactly 32 bytes, the SHA-256 digest WebAuthn defines.
+- `credentialId` must fit the attested credential data's two-byte length field (65535 bytes).
+
 To move a key between slauth's envelope and PKCS#8:
 
 ```csharp

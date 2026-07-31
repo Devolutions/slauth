@@ -24,8 +24,29 @@ public enum AttestationFlags : byte
     /// <summary>AT: attested credential data follows. Required when creating a credential.</summary>
     AttestedCredentialDataIncluded = 64,
 
-    /// <summary>ED: extension data follows.</summary>
+    /// <summary>
+    /// ED: extension data follows. Defined for completeness only — slauth never serializes an extension
+    /// map, so both entry points reject this flag.
+    /// </summary>
     ExtensionDataIncluded = 128,
+}
+
+/// <summary>Flag checks shared by the registration and assertion paths.</summary>
+internal static class AttestationFlagGuard
+{
+    /// <summary>
+    /// Rejects ED on either path. slauth's <c>AuthenticatorData::to_vec</c> never serializes an extension
+    /// map, so the bit would advertise a CBOR map that no consumer will find.
+    /// </summary>
+    internal static void RejectExtensionData(AttestationFlags attestationFlags)
+    {
+        if ((attestationFlags & AttestationFlags.ExtensionDataIncluded) != 0)
+        {
+            throw new ArgumentException(
+                "ExtensionDataIncluded is not supported; slauth does not serialize extension data.",
+                nameof(attestationFlags));
+        }
+    }
 }
 
 /// <summary>COSE algorithm identifiers slauth can create and sign with.</summary>
@@ -57,6 +78,9 @@ public class SlauthException : Exception
 /// </summary>
 public sealed class WebAuthnCreationResponse : IDisposable
 {
+    /// <summary>Largest credential id the attested credential data's two-byte length field can hold.</summary>
+    public const int MaxCredentialIdLength = ushort.MaxValue;
+
     private readonly CreationResponseHandle handle;
 
     private WebAuthnCreationResponse(CreationResponseHandle handle)
@@ -75,10 +99,13 @@ public sealed class WebAuthnCreationResponse : IDisposable
 
     /// <summary>Generates a credential and its attestation object.</summary>
     /// <param name="aaguid">Authenticator AAGUID as hex, without separators.</param>
-    /// <param name="credentialId">Credential id to embed in the attested credential data.</param>
+    /// <param name="credentialId">
+    /// Credential id to embed in the attested credential data; at most <see cref="MaxCredentialIdLength"/> bytes.
+    /// </param>
     /// <param name="rpId">Relying party id; its SHA-256 becomes the rpIdHash in authenticatorData.</param>
     /// <param name="attestationFlags">
-    /// authenticatorData flags. Include <see cref="AttestationFlags.AttestedCredentialDataIncluded"/>.
+    /// authenticatorData flags. Must include <see cref="AttestationFlags.AttestedCredentialDataIncluded"/>
+    /// and must not include <see cref="AttestationFlags.ExtensionDataIncluded"/>.
     /// </param>
     /// <param name="algorithms">
     /// Algorithms the relying party will accept, in preference order. slauth picks the first it supports.
@@ -117,6 +144,18 @@ public sealed class WebAuthnCreationResponse : IDisposable
             throw new ArgumentException(
                 "AttestedCredentialDataIncluded is required when creating a credential.",
                 nameof(attestationFlags));
+        }
+
+        AttestationFlagGuard.RejectExtensionData(attestationFlags);
+
+        // The attested credential data encodes this length in two bytes, and slauth casts to u16 without
+        // checking, so a longer id wraps while every byte is still written and the relying party reads
+        // the overflow as the start of the COSE key.
+        if (credentialId.Length > MaxCredentialIdLength)
+        {
+            throw new ArgumentException(
+                $"Credential id must be at most {MaxCredentialIdLength} bytes; got {credentialId.Length}.",
+                nameof(credentialId));
         }
 
         int[] rawAlgorithms = new int[algorithms.Length];
@@ -163,6 +202,9 @@ public sealed class WebAuthnCreationResponse : IDisposable
 /// <summary>An assertion produced by signing a relying party's challenge with a stored credential.</summary>
 public sealed class WebAuthnRequestResponse : IDisposable
 {
+    /// <summary>Length of the SHA-256 client data hash WebAuthn signs over.</summary>
+    public const int ClientDataHashLength = 32;
+
     private readonly RequestResponseHandle handle;
 
     private WebAuthnRequestResponse(RequestResponseHandle handle)
@@ -191,6 +233,16 @@ public sealed class WebAuthnRequestResponse : IDisposable
     /// assertion through the response rather than a null handle, so inspect <see cref="IsSuccess"/>; use
     /// <see cref="CreateOrThrow"/> to turn that into an exception.
     /// </summary>
+    /// <param name="rpId">Relying party id; its SHA-256 becomes the rpIdHash in authenticatorData.</param>
+    /// <param name="privateKey">A private key in slauth's credential envelope.</param>
+    /// <param name="attestationFlags">
+    /// authenticatorData flags. Structural flags belong to registration, so neither
+    /// <see cref="AttestationFlags.AttestedCredentialDataIncluded"/> nor
+    /// <see cref="AttestationFlags.ExtensionDataIncluded"/> may be set here.
+    /// </param>
+    /// <param name="clientDataHash">
+    /// The <see cref="ClientDataHashLength"/>-byte SHA-256 digest of the collected client data.
+    /// </param>
     public static WebAuthnRequestResponse Create(
         string rpId,
         string privateKey,
@@ -210,6 +262,26 @@ public sealed class WebAuthnRequestResponse : IDisposable
         if (clientDataHash is null)
         {
             throw new ArgumentNullException(nameof(clientDataHash));
+        }
+
+        // The assertion ABI has no way to pass attested credential data — it always hands slauth None — so
+        // AT here only sets a bit promising a payload that never gets appended.
+        if ((attestationFlags & AttestationFlags.AttestedCredentialDataIncluded) != 0)
+        {
+            throw new ArgumentException(
+                "AttestedCredentialDataIncluded is not valid for an assertion; it belongs to registration.",
+                nameof(attestationFlags));
+        }
+
+        AttestationFlagGuard.RejectExtensionData(attestationFlags);
+
+        // clientDataHash is a SHA-256 digest by definition. slauth signs whatever length it is given and
+        // still reports success, so a wrong-sized hash only fails later at the relying party.
+        if (clientDataHash.Length != ClientDataHashLength)
+        {
+            throw new ArgumentException(
+                $"clientDataHash must be a {ClientDataHashLength}-byte SHA-256 digest; got {clientDataHash.Length} bytes.",
+                nameof(clientDataHash));
         }
 
         IntPtr rpIdPointer = Utf8.Allocate(rpId);
