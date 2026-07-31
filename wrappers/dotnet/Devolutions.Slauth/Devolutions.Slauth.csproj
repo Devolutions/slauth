@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- netstandard2.0 defaults to C# 7.3, which predates nullable annotations and file-scoped namespaces. -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Devolutions.Slauth</AssemblyName>
+    <RootNamespace>Devolutions.Slauth</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>Devolutions.Slauth</PackageId>
+    <!-- Overridden by CI from the crate version; see wrappers/dotnet/build.ps1. -->
+    <Version>0.0.0-dev</Version>
+    <Authors>Devolutions Inc</Authors>
+    <Description>Managed bindings for slauth's WebAuthn authenticator: credential creation, assertion signing, and PKCS#8 conversion.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Devolutions/slauth</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Devolutions/slauth</RepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!--
+    Native libraries are staged here per RID by build.ps1 before packing, so the package ships
+    runtimes/<rid>/native/slauth.dll and the .NET host resolves DllImport("slauth") automatically.
+    Adding a platform is just another staged RID folder — no change needed here.
+  -->
+  <ItemGroup>
+    <None Include="runtimes/**" Pack="true" PackagePath="runtimes/" CopyToOutputDirectory="Never" />
+    <None Include="../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

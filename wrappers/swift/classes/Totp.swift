@@ -39,21 +39,21 @@ public class Totp: NSObject, RustObject {
 	public func to_uri(label: String, issuer: String) -> String {
 		let uri = totp_to_uri(raw, label, issuer)
 		let s = String(cString: uri!)
-		free(uri)
+		slauth_string_free(uri)
 		return s
 	}
 	
 	public func gen() -> String {
 		let code = totp_gen(raw)
 		let s = String(cString: code!)
-		free(code)
+		slauth_string_free(code)
 		return s
 	}
 	
 	public func gen_with(elapsed: UInt) -> String {
 		let code = totp_gen_with(raw, elapsed)
 		let s = String(cString: code!)
-		free(code)
+		slauth_string_free(code)
 		return s
 	}
 	

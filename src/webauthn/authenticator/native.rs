@@ -1,5 +1,13 @@
-#[cfg(target_os = "ios")]
-mod ios {
+// These bindings were originally iOS-only, but the C ABI they expose is platform-neutral and is what
+// non-Apple consumers (the .NET wrapper, and any other cdylib user) need. The enclosing module is
+// already feature-gated in mod.rs, so gate on the feature instead of the target.
+//
+// The android module below is a second C ABI over the same authenticator, shaped for Android's
+// JSON-oriented Credential Manager rather than raw CBOR. It exports four of the same symbol names with
+// different signatures, so the two modules stay mutually exclusive to keep #[no_mangle] from colliding
+// at link time.
+#[cfg(all(feature = "native-bindings", not(feature = "android")))]
+mod native_bindings {
     use crate::{
         strings,
         webauthn::{
@@ -59,6 +67,10 @@ mod ios {
 
     #[no_mangle]
     pub unsafe extern "C" fn response_free(res: *mut AuthenticatorCreationResponse) {
+        if res.is_null() {
+            return;
+        }
+
         let _ = Box::from_raw(res);
     }
 
@@ -241,6 +253,16 @@ mod ios {
             len: (*res).signature.len(),
         }
     }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn request_response_free(res: *mut AuthenticatorRequestResponse) {
+        if res.is_null() {
+            return;
+        }
+
+        let _ = Box::from_raw(res);
+    }
+
 }
 
 #[cfg(feature = "android")]

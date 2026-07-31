@@ -313,3 +313,15 @@ bool is_success(struct AuthenticatorRequestResponse *res);
 char *private_key_to_pkcs8_der(const char *private_key);
 
 char *pkcs8_to_custom_private_key(const char *pkcs8_key);
+
+void request_response_free(struct AuthenticatorRequestResponse *res);
+
+/**
+ * Reclaims any `char*` returned by this crate's native bindings. They all originate from
+ * `CString::into_raw`, so the caller's `free` is a different allocator and must not be used. The
+ * buffer is wiped first because some of these strings carry private key material.
+ *
+ * # Safety
+ * The pointer must have been produced by this crate and must not be used afterwards.
+ */
+void slauth_string_free(char *s);
