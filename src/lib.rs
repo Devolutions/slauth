@@ -51,6 +51,27 @@ pub mod strings {
             .into_raw()
     }
 
+    /// Reclaims any `char*` returned by this crate's native bindings. They all originate from
+    /// `CString::into_raw`, so the caller's `free` is a different allocator and must not be used. The
+    /// buffer is wiped first because some of these strings carry private key material.
+    ///
+    /// # Safety
+    /// The pointer must have been produced by this crate and must not be used afterwards.
+    #[no_mangle]
+    pub unsafe extern "C" fn slauth_string_free(s: *mut c_char) {
+        if s.is_null() {
+            return;
+        }
+
+        let mut bytes = CString::from_raw(s).into_bytes_with_nul();
+        for byte in bytes.iter_mut() {
+            std::ptr::write_volatile(byte, 0);
+        }
+
+        // Keep the wipe from being optimized away now that the buffer is about to be released.
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    }
+
     /// # Safety
     /// Needed to cast string in FFY context
     pub unsafe fn mut_c_char_to_string(cchar: *mut c_char) -> String {

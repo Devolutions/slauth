@@ -51,7 +51,7 @@ public class WebRequest : RustObject {
 		}
 		
 		let origin = String(cString: cOrigin!)
-		free(cOrigin)
+		slauth_string_free(cOrigin)
 		return .some(origin)
 	}
 	
@@ -67,7 +67,7 @@ public class WebRequest : RustObject {
 			}
 			
 			let keyHandle = String(cString: cKeyHandle!)
-			free(cKeyHandle)
+			slauth_string_free(cKeyHandle)
 			return .some(keyHandle)
 		} else {
 			return .none
@@ -112,14 +112,14 @@ public class SigningKey: RustObject {
 	public func getKeyHandle() -> String {
 		let cString = signing_key_get_key_handle(raw)
 		let keyHandle = String(cString: cString!)
-		free(cString)
+		slauth_string_free(cString)
 		return keyHandle
 	}
 	
 	public func toString() -> String {
 		let csString = signing_key_to_string(raw)
 		let sign = String(cString: csString!)
-		free(csString)
+		slauth_string_free(csString)
 		return sign
 	}
 }
@@ -151,7 +151,7 @@ public class WebResponse: RustObject {
 	public func toJson() -> String {
 		let cJsonString = client_web_response_to_json(raw)
 		let json = String(cString: cJsonString!)
-		free(cJsonString)
+		slauth_string_free(cJsonString)
 		return json
 	}
 }

@@ -41,20 +41,60 @@ public class WebAuthnTests
     [InlineData(CoseAlgorithm.Es256)]
     [InlineData(CoseAlgorithm.EdDsa)]
     [InlineData(CoseAlgorithm.Rs256)]
-    public void Assertion_SignsWithTheCreatedKey(CoseAlgorithm algorithm)
+    public void Assertion_VerifiesAgainstTheAttestedPublicKey(CoseAlgorithm algorithm)
     {
+        byte[] clientDataHash = SHA256.HashData(new byte[] { 1, 2, 3, 4 });
+
         using WebAuthnCreationResponse created = WebAuthnCreationResponse.Create(
             Aaguid, NewCredentialId(), RpId, CreationFlags, algorithm);
 
         using WebAuthnRequestResponse assertion = WebAuthnRequestResponse.CreateOrThrow(
-            RpId, created.PrivateKey, AssertionFlags, SHA256.HashData(new byte[] { 1, 2, 3, 4 }));
+            RpId, created.PrivateKey, AssertionFlags, clientDataHash);
 
         Assert.True(assertion.IsSuccess);
-        Assert.NotEmpty(assertion.Signature);
 
         // authenticatorData is rpIdHash(32) + flags(1) + signCount(4) at minimum.
         Assert.True(assertion.AuthenticatorData.Length >= 37);
         Assert.Equal(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(RpId)), assertion.AuthenticatorData[..32]);
+
+        // The signature must actually verify against the public key the registration attested, which is
+        // what a relying party checks. Non-empty bytes would pass an incorrectly signed assertion.
+        byte[] authData = AttestationParser.ReadAuthData(created.AttestationObject);
+        AttestationParser.CredentialPublicKey publicKey = AttestationParser.ReadPublicKey(authData);
+
+        Assert.Equal((int)algorithm, publicKey.Algorithm);
+        Assert.True(
+            AttestationParser.Verify(publicKey, assertion.AuthenticatorData, clientDataHash, assertion.Signature),
+            $"{algorithm} assertion did not verify against the attested public key.");
+    }
+
+    [Fact]
+    public void Assertion_DoesNotVerifyForADifferentChallenge()
+    {
+        byte[] clientDataHash = SHA256.HashData(new byte[] { 1, 2, 3, 4 });
+
+        using WebAuthnCreationResponse created = WebAuthnCreationResponse.Create(
+            Aaguid, NewCredentialId(), RpId, CreationFlags, CoseAlgorithm.Es256);
+
+        using WebAuthnRequestResponse assertion = WebAuthnRequestResponse.CreateOrThrow(
+            RpId, created.PrivateKey, AssertionFlags, clientDataHash);
+
+        byte[] authData = AttestationParser.ReadAuthData(created.AttestationObject);
+        AttestationParser.CredentialPublicKey publicKey = AttestationParser.ReadPublicKey(authData);
+
+        // Guards the verification helper itself: if it returned true unconditionally, the test above
+        // would pass no matter what slauth produced.
+        byte[] otherHash = SHA256.HashData(new byte[] { 9, 9, 9, 9 });
+        Assert.False(
+            AttestationParser.Verify(publicKey, assertion.AuthenticatorData, otherHash, assertion.Signature));
+    }
+
+    [Fact]
+    public void Create_WithoutAttestedCredentialDataFlag_Throws()
+    {
+        // slauth would omit the attested credential data and still report success, so the wrapper rejects it.
+        Assert.Throws<ArgumentException>(() => WebAuthnCreationResponse.Create(
+            Aaguid, NewCredentialId(), RpId, AttestationFlags.UserPresent, CoseAlgorithm.Es256));
     }
 
     [Fact]

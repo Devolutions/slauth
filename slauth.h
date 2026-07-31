@@ -317,8 +317,11 @@ char *pkcs8_to_custom_private_key(const char *pkcs8_key);
 void request_response_free(struct AuthenticatorRequestResponse *res);
 
 /**
- * Reclaims any `char*` this module returned; they are all `CString::into_raw` allocations and
- * cannot be released with the caller's `free`. The buffer is wiped first because one of them
- * (`get_private_key_from_response`) carries private key material.
+ * Reclaims any `char*` returned by this crate's native bindings. They all originate from
+ * `CString::into_raw`, so the caller's `free` is a different allocator and must not be used. The
+ * buffer is wiped first because some of these strings carry private key material.
+ *
+ * # Safety
+ * The pointer must have been produced by this crate and must not be used afterwards.
  */
 void slauth_string_free(char *s);

@@ -263,23 +263,6 @@ mod native_bindings {
         let _ = Box::from_raw(res);
     }
 
-    /// Reclaims any `char*` this module returned; they are all `CString::into_raw` allocations and
-    /// cannot be released with the caller's `free`. The buffer is wiped first because one of them
-    /// (`get_private_key_from_response`) carries private key material.
-    #[no_mangle]
-    pub unsafe extern "C" fn slauth_string_free(s: *mut c_char) {
-        if s.is_null() {
-            return;
-        }
-
-        let mut bytes = CString::from_raw(s).into_bytes_with_nul();
-        for byte in bytes.iter_mut() {
-            std::ptr::write_volatile(byte, 0);
-        }
-
-        // Keep the wipe from being optimized away now that the buffer is about to be released.
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-    }
 }
 
 #[cfg(feature = "android")]

@@ -39,7 +39,7 @@ public class Hotp: NSObject, RustObject {
 	public func to_uri(label: String, issuer: String) -> String {
 		let uri = hotp_to_uri(raw, label, issuer)
 		let s = String(cString: uri!)
-		free(uri)
+		slauth_string_free(uri)
 		return s
 	}
 	
@@ -50,7 +50,7 @@ public class Hotp: NSObject, RustObject {
 	public func gen() -> String {
 		let code = hotp_gen(raw)
 		let s_code = String(cString: code!)
-		free(code)
+		slauth_string_free(code)
 		return s_code
 	}
 	

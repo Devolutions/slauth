@@ -34,7 +34,7 @@ public class WebAuthnRequestResponse: NSObject, RustObject {
     public func getErrorMessage() -> String {
         let cString = get_error_message(self.raw)
         let errorMessage = String(cString: cString!)
-        free(cString)
+        slauth_string_free(cString)
         return errorMessage
     }
 
@@ -54,5 +54,9 @@ public class WebAuthnRequestResponse: NSObject, RustObject {
             self.init(raw: r!)
         }
         clientDataHashPointer.deallocate()
+    }
+
+    deinit {
+        request_response_free(raw)
     }
 }

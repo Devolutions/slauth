@@ -23,7 +23,7 @@ public class WebAuthnCreationResponse: NSObject {
     public func getPrivateKey() -> String {
         let cString = get_private_key_from_response(self.raw)
         let privateKey = String(cString: cString!)
-        free(cString)
+        slauth_string_free(cString)
         return privateKey
     }
 

@@ -110,6 +110,15 @@ public sealed class WebAuthnCreationResponse : IDisposable
             throw new ArgumentException("At least one algorithm is required.", nameof(algorithms));
         }
 
+        // Without AT, slauth omits the attested credential data and still reports success, yielding an
+        // attestation object no relying party can use. Fail here rather than hand back a broken credential.
+        if ((attestationFlags & AttestationFlags.AttestedCredentialDataIncluded) == 0)
+        {
+            throw new ArgumentException(
+                "AttestedCredentialDataIncluded is required when creating a credential.",
+                nameof(attestationFlags));
+        }
+
         int[] rawAlgorithms = new int[algorithms.Length];
         for (int i = 0; i < algorithms.Length; i++)
         {
