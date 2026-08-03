@@ -309,11 +309,23 @@ jobs:
           name: nuget
           path: wrappers/dotnet/package/*.nupkg
 
-      - name: Publish on Artifactory
-        uses: devolutions/actions/jfrog-nuget-publish@v1
+      - name: Check out repository
+        uses: actions/checkout@v6
         with:
-          artifactory_username: ${{ secrets.ARTIFACTORY_USERNAME }}
+          repository: Devolutions/actions
+          token: ${{ secrets.DEVOLUTIONSBOT_TOKEN }}
+          path: actions
+          ref: v1
+
+      - name: Setup Artifactory
+        uses: ./actions/nuget-artifactory-setup
+        with:
           artifactory_password: ${{ secrets.ARTIFACTORY_PASSWORD }}
+          artifactory_username: ${{ secrets.ARTIFACTORY_USERNAME }}
+
+      - name: Push
+        uses: ./actions/dotnet-push
+        with:
           push_snupkg: 'true'
           version: ${{ steps.version.outputs.version }}
           working_directory: wrappers/dotnet/package
