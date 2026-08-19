@@ -268,6 +268,7 @@ jobs:
         CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
 
   build-dotnet:
+    environment: artifactory-publish
     if: ${{ inputs.nuget }}
     runs-on: windows-latest
 
