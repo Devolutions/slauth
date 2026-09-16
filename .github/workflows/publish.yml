@@ -76,11 +76,6 @@ jobs:
       run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
       working-directory: dist/bundler
 
-    - name: Update Artifactory Cache
-      run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="slauth"
-      env:
-        GH_TOKEN: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
-
   build-wasm-web:
     environment: npm-publish
     if: ${{ inputs.wasm_web }}
@@ -116,11 +111,6 @@ jobs:
       - name: Publish
         run: npm publish --tag ${{ inputs.beta && 'beta' || 'latest' }}
         working-directory: dist/web
-
-      - name: Update Artifactory Cache
-        run: gh workflow run update-artifactory-cache.yml --repo Devolutions/scheduled-tasks --field package_name="slauth-web"
-        env:
-          GH_TOKEN: ${{ secrets.DEVOLUTIONSBOT_WRITE_TOKEN }}
 
   build-android:
     environment: cloudsmith-publish
