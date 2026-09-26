@@ -1,4 +1,7 @@
 {
+	"engines": {
+		"npm": ">=11.17.0"
+	},
 	"name": "svelte-slauth",
 	"private": true,
 	"version": "0.0.1",
