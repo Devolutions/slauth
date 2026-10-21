@@ -80,6 +80,11 @@ managed tests, and packs. Defaults to `win-x64` and `win-arm64`; pass `-Targets`
 
 Adding a platform means one entry in `$RidByTarget` in `build.ps1` — the wrapper and csproj need no change.
 
+A runner can only build (and test) the natives for its own OS, so the publish workflow splits the work:
+each OS job runs `./build.ps1 -Targets <its targets> -NoPack`, and one job copies every staged
+`runtimes/` folder together and runs `./build.ps1 -PackOnly`. The published package carries `win-x64`,
+`win-arm64`, `osx-x64`, `osx-arm64` (Developer ID signed), `linux-x64` and `linux-arm64`.
+
 ### Prerequisite for cross-compiling
 
 `ring` needs a C compiler for some targets. Building `aarch64-pc-windows-msvc` requires LLVM/clang on

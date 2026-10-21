@@ -18,6 +18,14 @@
 
 .PARAMETER SkipTests
     Skip the managed test run. The tests exercise the real C ABI, so leave them on where possible.
+
+.PARAMETER NoPack
+    Build, stage and test, but do not pack. CI uses this on each OS runner, since a runner can only
+    build (and test) the natives for its own OS, then hands the staged runtimes to a single pack job.
+
+.PARAMETER PackOnly
+    Skip the native builds and tests and pack whatever is already staged under runtimes/. CI uses this
+    once every OS runner's runtimes have been copied in.
 #>
 [CmdletBinding()]
 param(
@@ -25,10 +33,19 @@ param(
     [string] $Version,
     [string] $Configuration = 'Release',
     [string] $OutputPath = './package',
-    [switch] $SkipTests
+    [switch] $SkipTests,
+    [switch] $NoPack,
+    [switch] $PackOnly
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($NoPack -and $PackOnly) {
+    throw '-NoPack and -PackOnly cannot be used together.'
+}
+
+# `pwsh -File build.ps1 -Targets a,b` binds "a,b" as one string, so accept a comma list as well as an array.
+$Targets = @($Targets | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 $RidByTarget = @{
     'x86_64-pc-windows-msvc'    = @{ Rid = 'win-x64';     File = 'slauth.dll' }
@@ -54,58 +71,76 @@ if (-not $Version) {
     }
 }
 
-Write-Host "Packing Devolutions.Slauth $Version" -ForegroundColor Cyan
+Write-Host "Devolutions.Slauth $Version" -ForegroundColor Cyan
 
-# Start from a clean runtimes tree so a removed target can't leave a stale native behind in the package.
-if (Test-Path $RuntimesDir) {
-    Remove-Item $RuntimesDir -Recurse -Force
+if (-not $PackOnly) {
+    # Start from a clean runtimes tree so a removed target can't leave a stale native behind in the package.
+    if (Test-Path $RuntimesDir) {
+        Remove-Item $RuntimesDir -Recurse -Force
+    }
+
+    foreach ($target in $Targets) {
+        if (-not $RidByTarget.ContainsKey($target)) {
+            throw "Unknown Rust target '$target'. Add it to `$RidByTarget in this script."
+        }
+
+        $mapping = $RidByTarget[$target]
+
+        Write-Host "==> $target ($($mapping.Rid))" -ForegroundColor Yellow
+
+        Push-Location $RepoRoot
+        try {
+            & rustup target add $target
+            if ($LASTEXITCODE -ne 0) { throw "rustup target add $target failed." }
+
+            & cargo build --release --target $target
+            if ($LASTEXITCODE -ne 0) { throw "cargo build for $target failed." }
+        }
+        finally {
+            Pop-Location
+        }
+
+        $built = Join-Path $RepoRoot "target/$target/release/$($mapping.File)"
+        if (-not (Test-Path $built)) {
+            throw "Expected native library not found: $built"
+        }
+
+        $destination = Join-Path $RuntimesDir "$($mapping.Rid)/native"
+        New-Item $destination -ItemType Directory -Force | Out-Null
+        Copy-Item $built (Join-Path $destination $mapping.File) -Force
+    }
+
+    if (-not $SkipTests) {
+        # The test project loads the host-architecture cdylib from target/release, so make sure it exists.
+        Push-Location $RepoRoot
+        try {
+            & cargo build --release
+            if ($LASTEXITCODE -ne 0) { throw 'cargo build (host) failed.' }
+        }
+        finally {
+            Pop-Location
+        }
+
+        Write-Host '==> Running managed tests' -ForegroundColor Yellow
+        & dotnet test (Join-Path $WrapperDir 'Devolutions.Slauth.Tests/Devolutions.Slauth.Tests.csproj') --configuration $Configuration
+        if ($LASTEXITCODE -ne 0) { throw 'Managed tests failed.' }
+    }
+}
+else {
+    # Another runner staged these, so fail here rather than publish a package missing a platform.
+    $staged = @(Get-ChildItem (Join-Path $RuntimesDir '*/native/*') -File -ErrorAction SilentlyContinue)
+    if ($staged.Count -eq 0) {
+        throw "No native libraries staged under $RuntimesDir. Run without -PackOnly, or copy the runtimes in first."
+    }
+
+    foreach ($file in $staged) {
+        Write-Host "    staged $([System.IO.Path]::GetRelativePath($RuntimesDir, $file.FullName))"
+    }
 }
 
-foreach ($target in $Targets) {
-    if (-not $RidByTarget.ContainsKey($target)) {
-        throw "Unknown Rust target '$target'. Add it to `$RidByTarget in this script."
-    }
-
-    $mapping = $RidByTarget[$target]
-
-    Write-Host "==> $target ($($mapping.Rid))" -ForegroundColor Yellow
-
-    Push-Location $RepoRoot
-    try {
-        & rustup target add $target
-        if ($LASTEXITCODE -ne 0) { throw "rustup target add $target failed." }
-
-        & cargo build --release --target $target
-        if ($LASTEXITCODE -ne 0) { throw "cargo build for $target failed." }
-    }
-    finally {
-        Pop-Location
-    }
-
-    $built = Join-Path $RepoRoot "target/$target/release/$($mapping.File)"
-    if (-not (Test-Path $built)) {
-        throw "Expected native library not found: $built"
-    }
-
-    $destination = Join-Path $RuntimesDir "$($mapping.Rid)/native"
-    New-Item $destination -ItemType Directory -Force | Out-Null
-    Copy-Item $built (Join-Path $destination $mapping.File) -Force
-}
-
-if (-not $SkipTests) {
-    # The test project loads the host-architecture cdylib from target/release, so make sure it exists.
-    Push-Location $RepoRoot
-    try {
-        & cargo build --release
-        if ($LASTEXITCODE -ne 0) { throw 'cargo build (host) failed.' }
-    }
-    finally {
-        Pop-Location
-    }
-
-    Write-Host '==> Running managed tests' -ForegroundColor Yellow
-    & dotnet test (Join-Path $WrapperDir 'Devolutions.Slauth.Tests/Devolutions.Slauth.Tests.csproj') --configuration $Configuration
-    if ($LASTEXITCODE -ne 0) { throw 'Managed tests failed.' }
+if ($NoPack) {
+    Write-Host "Done. Runtimes staged in $RuntimesDir" -ForegroundColor Green
+    return
 }
 
 Write-Host '==> Packing' -ForegroundColor Yellow
