@@ -257,8 +257,8 @@ jobs:
       env:
         CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
 
-  build-dotnet:
-    environment: artifactory-publish
+  # Each OS runner builds and tests the natives for its own OS; publish-dotnet packs them into one package.
+  build-dotnet-windows:
     if: ${{ inputs.nuget }}
     runs-on: windows-latest
 
@@ -281,9 +281,159 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # Builds both Windows natives, runs the managed tests, and packs into wrappers/dotnet/package.
+      - name: Build and test
+        run: ./build.ps1 -Targets x86_64-pc-windows-msvc,aarch64-pc-windows-msvc -NoPack
+        shell: pwsh
+        working-directory: wrappers/dotnet
+
+      - name: Upload runtimes
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-runtimes-windows
+          path: wrappers/dotnet/Devolutions.Slauth/runtimes/
+          if-no-files-found: error
+
+  build-dotnet-macos:
+    # The Developer ID certificate lives in this environment, next to the Swift job that also signs with it.
+    environment: cloudsmith-publish
+    if: ${{ inputs.nuget }}
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Setup rust
+        run: |
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+
+      - name: Configure .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # The runner is arm64, so the managed tests exercise the arm64 dylib; x86_64 is cross-compiled.
+      - name: Build and test
+        run: ./build.ps1 -Targets x86_64-apple-darwin,aarch64-apple-darwin -NoPack
+        shell: pwsh
+        working-directory: wrappers/dotnet
+
+      - name: Setup code signing
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_APP_DEV_ID_APP_CERTIFICATE_PASSWORD }}
+
+      # Apps that bundle the package are notarized, which requires every nested Mach-O to carry a Developer ID signature.
+      - name: Sign dylibs
+        run: |
+          for dylib in wrappers/dotnet/Devolutions.Slauth/runtimes/osx-*/native/libslauth.dylib; do
+            codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$dylib"
+            codesign --verify --strict --verbose "$dylib"
+          done
+        env:
+          SIGNING_IDENTITY: "Developer ID Application: Devolutions inc."
+
+      - name: Upload runtimes
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-runtimes-macos
+          path: wrappers/dotnet/Devolutions.Slauth/runtimes/
+          if-no-files-found: error
+
+  build-dotnet-linux:
+    if: ${{ inputs.nuget }}
+    # One native runner per architecture, so the managed tests run on both. Ubuntu 22.04 keeps the glibc
+    # requirement at 2.35 rather than whatever the latest image ships.
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            arch: x64
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Setup rust
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Configure .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build and test
+        run: ./build.ps1 -Targets ${{ matrix.target }} -NoPack
+        shell: pwsh
+        working-directory: wrappers/dotnet
+
+      - name: Upload runtimes
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-runtimes-linux-${{ matrix.arch }}
+          path: wrappers/dotnet/Devolutions.Slauth/runtimes/
+          if-no-files-found: error
+
+  publish-dotnet:
+    environment: artifactory-publish
+    if: ${{ inputs.nuget }}
+    needs: [build-dotnet-windows, build-dotnet-macos, build-dotnet-linux]
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Download runtimes
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dotnet-runtimes-*
+          merge-multiple: true
+          path: wrappers/dotnet/Devolutions.Slauth/runtimes
+
+      # A package missing one of these would still pack and publish, so check before going further.
+      - name: Check runtimes
+        run: |
+          $expected = @(
+            'win-x64/native/slauth.dll',
+            'win-arm64/native/slauth.dll',
+            'osx-x64/native/libslauth.dylib',
+            'osx-arm64/native/libslauth.dylib',
+            'linux-x64/native/libslauth.so',
+            'linux-arm64/native/libslauth.so'
+          )
+          $missing = $expected | Where-Object { -not (Test-Path (Join-Path 'wrappers/dotnet/Devolutions.Slauth/runtimes' $_)) }
+          if ($missing) {
+            throw "Missing runtimes: $($missing -join ', ')"
+          }
+        shell: pwsh
+
+      - name: Configure .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
       - name: Generate package
-        run: ./build.ps1
+        run: ./build.ps1 -PackOnly
         shell: pwsh
         working-directory: wrappers/dotnet
 
